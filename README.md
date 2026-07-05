@@ -125,7 +125,7 @@ flowchart TB
 | **Traefik** | TLS termination, route dashboards/API, rate limits |
 | **Postgres** | Durable metadata, alerts, review state, job outcomes |
 | **Redis** | RQ job queues, short-lived locks, rate-limit counters |
-| **Platform API** | Health, tenant registry, future admin/review endpoints |
+| **Platform API** | Health, tenant registry, exoplanet JSON API, review dashboard |
 | **Bot services** | Telegram interface; auth gate; enqueue work |
 | **Workers** | Pipelines, analysis, LLM summaries |
 | **Scheduler** | Cron-style enqueue (APScheduler) |
@@ -167,7 +167,8 @@ research-platform/
 │   └── prometheus/             # Scraping config
 ├── research_platform/           # Shared core
 │   ├── core/                   # config, tenancy, logging, health
-│   ├── api/                    # FastAPI platform API
+│   ├── api/                    # FastAPI (platform + exoplanet + review UI)
+│   ├── templates/review/       # HTMX exoplanet review dashboard
 │   ├── bots/                   # Telegram bot runners
 │   ├── workers/                # RQ worker + shared jobs
 │   └── scheduler/              # APScheduler cron enqueue
@@ -175,14 +176,17 @@ research-platform/
 │   ├── mev/
 │   ├── anomaly/
 │   ├── collective/
+│   │   └── publish/            # Anonymous GitHub export/publish (API only)
 │   └── exoplanet/
-│       ├── config.yaml         # Tenant resource + tool policy
-│       ├── pipelines/
-│       ├── workers/
-│       └── bots/
+│       ├── config/targets.yaml # Curated TESS/Kepler targets
+│       ├── pipelines/          # MAST ingest, analysis, LLM summaries
+│       ├── review/             # Shared review query helpers
+│       └── workers/
 ├── scripts/
 │   ├── bootstrap.sh
-│   └── backup.sh
+│   ├── backup.sh
+│   ├── setup-collective.sh
+│   └── setup-exoplanet.sh
 ├── secrets/                    # gitignored; production secret mounts
 └── data/                       # gitignored local volumes
 ```
@@ -233,7 +237,7 @@ Docker Compose `deploy.resources.limits` on every service, plus:
 
 ### Collective identity separation (anonymous GitHub)
 
-The **AI Collective**
+The **AI Collective** tenant uses a dedicated anonymous GitHub account. This repo (`research-platform`) stays on your **personal** GitHub (`cspannos`); collective **content repos never live here**.
 
 | Concern | Implementation |
 |---------|----------------|
@@ -265,6 +269,15 @@ make collective-up
 - [ ] Keep `COLLECTIVE_PUBLISH_ENABLED=false` until you've reviewed export output
 - [ ] Collective Telegram bot separate from personal/research bots
 - [ ] Back up `tenant_collective` separately if needed (`EXCLUDE_COLLECTIVE_FROM_BACKUP=false`)
+
+### GitHub account map
+
+| Account | SSH host | Use for |
+|---------|----------|---------|
+| **cspannos** | `github-cspannos` | This repo (`research-platform`), personal infra |
+| **titancassini** | `github-titancassini` | AI Collective content repos only — never push platform code here |
+
+Use a dedicated account SSH key for `cspannos` pushes. Do not reuse deploy keys scoped to a single repo as your account key.
 
 ---
 
@@ -466,7 +479,7 @@ Use **mdadm RAID1** only if you accept write overhead; otherwise mirror via nigh
 | `traefik` | Reverse proxy, TLS, middlewares |
 | `postgres` | Metadata DB + per-tenant DBs |
 | `redis` | Queues and ephemeral state |
-| `platform-api` | Health, `/tenants`, `/metrics` |
+| `platform-api` | Health, `/tenants`, `/metrics`, `/exoplanet/*`, `/review/*` |
 | `bot-demo` | Working Telegram stub (polling) |
 | `worker-demo` | RQ worker for demo queue |
 | `scheduler` | Enqueues heartbeat every 15 min |
