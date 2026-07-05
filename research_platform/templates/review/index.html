@@ -1,0 +1,17 @@
+{% extends "review/base.html" %}
+{% block title %}Review Queue{% endblock %}
+{% block content %}
+<div class="tabs">
+  {% for s, label in [('pending','Pending'), ('approved','Approved'), ('rejected','Rejected'), ('all','All')] %}
+  <a href="/review/?status={{ s }}&token={{ request.query_params.get('token', '') }}"
+     class="{% if status_filter == s %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div id="candidate-list"
+     hx-get="/review/partials/list?status={{ status_filter }}&token={{ request.query_params.get('token', '') }}"
+     hx-trigger="every 60s"
+     hx-swap="innerHTML">
+  {% include "review/partials/candidate_list.html" %}
+</div>
+{% endblock %}

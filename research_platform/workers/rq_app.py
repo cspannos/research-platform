@@ -13,6 +13,7 @@ from research_platform.core.tenancy import get_tenant, redis_url_for_tenant
 TENANT_JOB_MODULES: dict[str, list[str]] = {
     "demo": ["research_platform.workers.jobs"],
     "collective": ["projects.collective.workers.jobs"],
+    "exoplanet": ["projects.exoplanet.workers.jobs"],
 }
 
 

@@ -1,0 +1,84 @@
+{% if message %}
+<div class="flash">{{ message }}</div>
+{% endif %}
+
+<article class="card">
+  <div style="display:flex; justify-content:space-between; gap:1rem;">
+    <div>
+      <h2>#{{ candidate.id }} — {{ candidate.target_name }}</h2>
+      <p class="meta">{{ candidate.mission }} · slug {{ candidate.target_slug }}</p>
+    </div>
+    <span class="badge {{ candidate.status }}">{{ candidate.status }}</span>
+  </div>
+
+  <p class="meta" style="margin-top:0.75rem;">
+    Period {{ "%.4f"|format(candidate.period_days) }} days ·
+    SNR {{ "%.2f"|format(candidate.snr) }} ·
+    Depth ~{{ "%.0f"|format(candidate.depth_ppm) }} ppm
+  </p>
+  <p class="meta">Flagged: {{ candidate.flag_reason }}</p>
+
+  <h3 style="margin-top:1rem;">Review summary</h3>
+  {% if candidate.summary %}
+  <div class="summary">{{ candidate.summary }}</div>
+  <p class="meta">Source: {{ candidate.summary_source or "unknown" }}</p>
+  {% else %}
+  <p class="meta">No summary yet. Generate via Telegram /summaries or enrich below.</p>
+  {% endif %}
+
+  <div class="actions">
+    <button class="primary"
+            hx-post="/review/candidates/{{ candidate.id }}/enrich?token={{ request.query_params.get('token', '') }}"
+            hx-target="#candidate-panel"
+            hx-swap="innerHTML">
+      Enrich with LLM
+    </button>
+    <button class="approve"
+            hx-post="/review/candidates/{{ candidate.id }}/status?token={{ request.query_params.get('token', '') }}"
+            hx-vals='{"status": "approved"}'
+            hx-target="#candidate-panel"
+            hx-swap="innerHTML">
+      Approve
+    </button>
+    <button class="reject"
+            hx-post="/review/candidates/{{ candidate.id }}/status?token={{ request.query_params.get('token', '') }}"
+            hx-vals='{"status": "rejected"}'
+            hx-target="#candidate-panel"
+            hx-swap="innerHTML">
+      Reject
+    </button>
+    <button
+            hx-post="/review/candidates/{{ candidate.id }}/status?token={{ request.query_params.get('token', '') }}"
+            hx-vals='{"status": "pending"}'
+            hx-target="#candidate-panel"
+            hx-swap="innerHTML">
+      Re-open
+    </button>
+  </div>
+</article>
+
+<article class="card comments">
+  <h3>Reviewer comments</h3>
+  {% for comment in candidate.comments %}
+  <div class="comment">
+    <strong>{{ comment.author }}</strong>
+    <span class="meta"> · {{ comment.created_at.strftime('%Y-%m-%d %H:%M UTC') if comment.created_at else '' }}</span>
+    <p>{{ comment.body }}</p>
+  </div>
+  {% else %}
+  <p class="meta">No comments yet.</p>
+  {% endfor %}
+
+  <form style="margin-top:1rem;"
+        hx-post="/review/candidates/{{ candidate.id }}/comment?token={{ request.query_params.get('token', '') }}"
+        hx-target="#candidate-panel"
+        hx-swap="innerHTML">
+    <label class="meta" for="author">Author</label>
+    <input type="text" id="author" name="author" value="reviewer" style="margin:0.35rem 0 0.75rem;">
+    <label class="meta" for="body">Comment</label>
+    <textarea id="body" name="body" rows="4" required placeholder="Vetting notes, follow-up actions…" style="margin-top:0.35rem;"></textarea>
+    <div class="actions">
+      <button type="submit" class="primary">Save comment</button>
+    </div>
+  </form>
+</article>

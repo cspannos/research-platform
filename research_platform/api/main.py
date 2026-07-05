@@ -4,6 +4,8 @@ from fastapi import FastAPI, HTTPException, Request
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, generate_latest
 from starlette.responses import PlainTextResponse, Response
 
+from research_platform.api.exoplanet import router as exoplanet_router
+from research_platform.api.review_dashboard import review_root_redirect, router as review_router
 from research_platform.core.config import get_settings
 from research_platform.core.logging import configure_logging, get_logger
 from research_platform.core.tenancy import TENANTS
@@ -14,6 +16,8 @@ logger = get_logger(__name__)
 REQUESTS = Counter("platform_http_requests_total", "HTTP requests", ["path", "method", "status"])
 
 app = FastAPI(title="Research Platform API", version="0.1.0")
+app.include_router(exoplanet_router)
+app.include_router(review_router)
 
 
 @app.middleware("http")
@@ -61,5 +65,8 @@ async def metrics() -> Response:
 
 
 @app.get("/")
-async def root() -> dict[str, str]:
+async def root(request: Request):
+    host = request.headers.get("host", "")
+    if host.startswith("review."):
+        return review_root_redirect(request)
     return {"service": "research-platform-api", "version": "0.1.0"}

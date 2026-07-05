@@ -1,0 +1,9 @@
+{% extends "review/base.html" %}
+{% block title %}Candidate #{{ candidate.id }}{% endblock %}
+{% block content %}
+<p class="meta"><a href="/review/?token={{ request.query_params.get('token', '') }}">← Back to queue</a></p>
+
+<div id="candidate-panel">
+  {% include "review/partials/candidate_detail_panel.html" %}
+</div>
+{% endblock %}

@@ -52,3 +52,12 @@ collective-up:
 
 collective-logs:
 	docker compose --profile collective logs -f bot-collective worker-collective
+
+exoplanet-setup:
+	bash scripts/setup-exoplanet.sh
+
+exoplanet-up:
+	docker compose --profile exoplanet up -d bot-exoplanet worker-exoplanet
+
+exoplanet-logs:
+	docker compose --profile exoplanet logs -f bot-exoplanet worker-exoplanet

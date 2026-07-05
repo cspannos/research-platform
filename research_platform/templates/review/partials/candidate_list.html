@@ -1,0 +1,28 @@
+{% if not candidates %}
+<p class="meta">No candidates in this queue.</p>
+{% endif %}
+
+{% for c in candidates %}
+<article class="card">
+  <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
+    <div>
+      <h2>#{{ c.id }} — {{ c.target_name }} <span class="meta">({{ c.mission }})</span></h2>
+      <p class="meta">
+        Period {{ "%.3f"|format(c.period_days) }} d · SNR {{ "%.2f"|format(c.snr) }} ·
+        Depth ~{{ "%.0f"|format(c.depth_ppm) }} ppm
+      </p>
+      <p class="meta">{{ c.flag_reason }}</p>
+    </div>
+    <span class="badge {{ c.status }}">{{ c.status }}</span>
+  </div>
+  {% if c.summary %}
+  <div class="summary" style="margin-top:0.75rem;">{{ c.summary }}</div>
+  {% if c.summary_source %}
+  <p class="meta" style="margin-top:0.35rem;">Summary source: {{ c.summary_source }}</p>
+  {% endif %}
+  {% endif %}
+  <div class="actions">
+    <a class="btn" href="/review/candidates/{{ c.id }}?token={{ request.query_params.get('token', '') }}">Open review</a>
+  </div>
+</article>
+{% endfor %}

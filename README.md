@@ -6,7 +6,7 @@ Supports:
 
 - **MEV research** — pattern monitoring, tx tracking, Telegram digests
 - **Blockchain anomaly detection** — wallet/fund-flow alerts
-- **AI Anarchist Collective** — publishing/coordination via Telegram
+- **AI Collective** — publishing/coordination via Telegram
 - **Exoplanet citizen science** — targeted TESS/Kepler analysis (cached, not full archives)
 
 ## Quick start
@@ -26,6 +26,33 @@ Optional monitoring:
 
 ```bash
 make monitoring-up
+```
+
+### Exoplanet tenant
+
+```bash
+make exoplanet-setup
+# Set EXOPLANET_TELEGRAM_* and optional MAST_API_TOKEN in .env
+# Edit projects/exoplanet/config/targets.yaml
+
+make exoplanet-up
+curl http://127.0.0.1:8000/exoplanet/targets
+```
+
+Telegram: `/ingest` → `/scan` → `/summaries` → `/notify`
+
+Review dashboard (set `PLATFORM_ADMIN_TOKEN` in `.env`):
+
+```bash
+open "http://127.0.0.1:8000/review/?token=YOUR_ADMIN_TOKEN"
+# production: https://review.${PLATFORM_DOMAIN}/review/?token=...
+```
+
+Enable automatic LLM summaries on scheduled `/summaries` jobs:
+
+```bash
+EXOPLANET_LLM_SUMMARIES=true
+OPENROUTER_API_KEY=sk-or-...
 ```
 
 ---
@@ -206,7 +233,7 @@ Docker Compose `deploy.resources.limits` on every service, plus:
 
 ### Collective identity separation (anonymous GitHub)
 
-The **AI Anarchist Collective** tenant uses a dedicated anonymous GitHub account. This repo (`research-platform`) stays on your **personal** GitHub; collective **content repos never live here**.
+The **AI Collective**
 
 | Concern | Implementation |
 |---------|----------------|
@@ -413,19 +440,22 @@ Use **mdadm RAID1** only if you accept write overhead; otherwise mirror via nigh
 - Daily Telegram digest pipeline
 - Alert dedup + rate limits
 
-### Phase 4 — Exoplanet tenant
+### Phase 4 — Exoplanet tenant ✅ (initial)
 
-- MAST API ingest for explicit target list only
-- Cache management (80 GB cap, 30-day retention)
-- Lightweight periodogram/detrend scripts
-- Candidate review records in Postgres
+- MAST metadata ingest for curated targets (`projects/exoplanet/config/targets.yaml`)
+- Local `.npz` cache with 80 GB cap / 30-day retention
+- Lomb-Scargle period search + candidate flagging in `tenant_exoplanet`
+- Telegram bot (`/ingest`, `/scan`, `/analyze`, `/summaries`, `/notify`)
+- Review API at `/exoplanet/candidates` (Traefik: `review.${DOMAIN}`)
+- Scheduled ingest (02:00), scan (04:00), review digest (10:00 UTC)
 
-### Phase 5 — Dashboard and review workflow
+### Phase 5 — Dashboard and review workflow ✅
 
-- FastAPI + minimal frontend at `review.${DOMAIN}`
-- Human approve/reject/comment on flagged items
-- Push approved summaries to Telegram
-- Optional webhook mode for dashboard only
+- HTMX review UI at `/review/` (Traefik: `https://review.${DOMAIN}/review/`)
+- Approve / reject / re-open candidates with reviewer comments
+- LLM-enriched summaries via OpenRouter (`EXOPLANET_LLM_SUMMARIES=true` or per-candidate **Enrich** button)
+- JSON API: comments + enrich endpoints under `/exoplanet/candidates/{id}/…`
+- Auth: `PLATFORM_ADMIN_TOKEN` as `?token=` query param or `X-Admin-Token` header
 
 ---
 
@@ -441,6 +471,7 @@ Use **mdadm RAID1** only if you accept write overhead; otherwise mirror via nigh
 | `worker-demo` | RQ worker for demo queue |
 | `scheduler` | Enqueues heartbeat every 15 min |
 | `bot-collective` / `worker-collective` | Optional `--profile collective` |
+| `bot-exoplanet` / `worker-exoplanet` | Optional `--profile exoplanet` |
 | `prometheus` (+ exporters) | Optional `--profile monitoring` |
 
 Copy `docker-compose.yml` blocks to add `bot-mev`, `worker-mev`, etc. when enabling tenants.

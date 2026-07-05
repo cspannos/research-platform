@@ -9,6 +9,9 @@ data/*
 !data/collective/
 !data/collective/exports/
 !data/collective/exports/.gitkeep
+!data/exoplanet/
+!data/exoplanet/cache/
+!data/exoplanet/cache/.gitkeep
 *.pyc
 __pycache__/
 .pytest_cache/

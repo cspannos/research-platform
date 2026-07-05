@@ -1,0 +1,19 @@
+# Curated targets only — do not bulk-ingest full sectors or archives.
+targets:
+  - id: toi-715
+    name: TOI-715
+    mission: TESS
+    tic_id: "260128064"
+    notes: "Known habitable-zone candidate; baseline monitoring target."
+
+  - id: kepler-442
+    name: Kepler-442
+    mission: Kepler
+    kic_id: "8219268"
+    notes: "Super-Earth host; useful for pipeline validation."
+
+  - id: tic-441420236
+    name: TIC 441420236
+    mission: TESS
+    tic_id: "441420236"
+    notes: "Citizen science follow-up target placeholder."

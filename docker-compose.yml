@@ -152,6 +152,10 @@ services:
       - traefik.http.routers.platform-api.entrypoints=websecure
       - traefik.http.routers.platform-api.middlewares=secure-headers@file,rate-limit@file
       - traefik.http.services.platform-api.loadbalancer.server.port=8000
+      - traefik.http.routers.review-exoplanet.rule=Host(`review.${PLATFORM_DOMAIN:-localhost}`)
+      - traefik.http.routers.review-exoplanet.entrypoints=websecure
+      - traefik.http.routers.review-exoplanet.middlewares=secure-headers@file,rate-limit@file
+      - traefik.http.routers.review-exoplanet.service=platform-api
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/live"]
       interval: 15s
@@ -264,12 +268,74 @@ services:
       retries: 3
       start_period: 20s
 
+  # ── Exoplanet tenant: docker compose --profile exoplanet up -d
+  bot-exoplanet:
+    <<: *platform-common
+    profiles: ["exoplanet"]
+    command: ["python", "-m", "research_platform.bots.exoplanet_bot"]
+    environment:
+      SERVICE_NAME: bot-exoplanet
+      TENANT_ID: ${EXOPLANET_TENANT_ID:-exoplanet}
+      TELEGRAM_BOT_TOKEN: ${EXOPLANET_TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_USER_IDS: ${EXOPLANET_TELEGRAM_ALLOWED_USER_IDS}
+      TELEGRAM_MODE: ${EXOPLANET_TELEGRAM_MODE:-polling}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    depends_on:
+      redis:
+        condition: service_healthy
+      platform-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "bot"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker-exoplanet:
+    <<: *platform-common
+    profiles: ["exoplanet"]
+    read_only: false
+    command: ["python", "-m", "research_platform.workers.rq_app", "--tenant", "exoplanet"]
+    environment:
+      SERVICE_NAME: worker-exoplanet
+      TENANT_ID: ${EXOPLANET_TENANT_ID:-exoplanet}
+      WORKER_CONCURRENCY: "1"
+      EXOPLANET_CACHE_DIR: /var/cache/platform/exoplanet
+      MAST_API_TOKEN: ${MAST_API_TOKEN}
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./projects:/app/projects:ro
+      - ./data/exoplanet/cache:/var/cache/platform/exoplanet
+      - platform_logs:/var/log/platform
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 2048M
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
   scheduler:
     <<: [*platform-common, *resource-small]
     command: ["python", "-m", "research_platform.scheduler.main"]
     environment:
       SERVICE_NAME: scheduler
       TENANT_ID: platform
+      ENABLE_SCHEDULER_PROFILES: ${ENABLE_SCHEDULER_PROFILES:-demo,exoplanet}
     depends_on:
       redis:
         condition: service_healthy
