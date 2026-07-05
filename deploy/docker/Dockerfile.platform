@@ -1,0 +1,26 @@
+FROM python:3.12-slim-bookworm AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
+
+COPY pyproject.toml README.md ./
+COPY research_platform ./research_platform
+COPY projects ./projects
+COPY configs ./configs
+
+RUN pip install --upgrade pip \
+    && pip install .
+
+USER app
+
+ENTRYPOINT ["/usr/bin/tini", "--"]

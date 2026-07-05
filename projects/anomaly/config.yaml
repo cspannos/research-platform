@@ -1,0 +1,40 @@
+tenant_id: anomaly
+display_name: Blockchain Anomaly Detection
+enabled: false
+
+telegram:
+  mode: polling
+  allowed_user_ids: []
+
+resources:
+  bot:
+    cpus: "0.25"
+    memory: 256M
+  worker:
+    cpus: "1.00"
+    memory: 1536M
+    concurrency: 2
+
+pipelines:
+  - name: wallet-movement-scan
+    schedule: "*/10 * * * *"
+    description: Detect unusual account movement and large fund flows
+  - name: anomaly-daily-brief
+    schedule: "0 8 * * *"
+    description: Human-readable anomaly summary for Telegram review
+
+tools:
+  allowed:
+    - http_get
+    - postgres_readwrite
+    - redis_enqueue
+  denied:
+    - shell_exec
+    - raw_key_export
+
+integrations:
+  rpc_url_env: ANOMALY_ETH_RPC_URL
+
+notes: >
+  Store wallet labels, alert thresholds, and recent observations only.
+  Offload heavy graph analytics to batch jobs on external compute if needed.

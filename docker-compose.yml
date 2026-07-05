@@ -1,0 +1,344 @@
+name: research-platform
+
+x-platform-common: &platform-common
+  build:
+    context: .
+    dockerfile: deploy/docker/Dockerfile.platform
+  env_file:
+    - .env
+  networks:
+    - platform_internal
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp:mode=1777,size=64m
+  volumes:
+    - ./configs:/app/configs:ro
+    - ./projects:/app/projects:ro
+    - platform_logs:/var/log/platform
+
+x-resource-small: &resource-small
+  deploy:
+    resources:
+      limits:
+        cpus: "0.50"
+        memory: 512M
+      reservations:
+        cpus: "0.10"
+        memory: 128M
+
+x-resource-worker: &resource-worker
+  deploy:
+    resources:
+      limits:
+        cpus: "1.00"
+        memory: 1536M
+      reservations:
+        cpus: "0.25"
+        memory: 256M
+
+services:
+  traefik:
+    image: traefik:v3.3
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./configs/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./configs/traefik/dynamic:/etc/traefik/dynamic:ro
+      - traefik_certs:/letsencrypt
+    networks:
+      - platform_internal
+      - platform_edge
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.traefik.rule=Host(`traefik.${PLATFORM_DOMAIN:-localhost}`)
+      - traefik.http.routers.traefik.entrypoints=websecure
+      - traefik.http.routers.traefik.middlewares=admin-auth@file,secure-headers@file
+      - traefik.http.routers.traefik.service=api@internal
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./configs/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - platform_internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 4096M
+        reservations:
+          cpus: "0.25"
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "yes"
+    volumes:
+      - redis_data:/data
+    networks:
+      - platform_internal
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  platform-api:
+    <<: [*platform-common, *resource-small]
+    command: ["python", "-m", "uvicorn", "research_platform.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      SERVICE_NAME: platform-api
+      TENANT_ID: platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.platform-api.rule=Host(`api.${PLATFORM_DOMAIN:-localhost}`)
+      - traefik.http.routers.platform-api.entrypoints=websecure
+      - traefik.http.routers.platform-api.middlewares=secure-headers@file,rate-limit@file
+      - traefik.http.services.platform-api.loadbalancer.server.port=8000
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  bot-demo:
+    <<: [*platform-common, *resource-small]
+    command: ["python", "-m", "research_platform.bots.demo_bot"]
+    environment:
+      SERVICE_NAME: bot-demo
+      TENANT_ID: ${DEMO_TENANT_ID:-demo}
+      TELEGRAM_BOT_TOKEN: ${DEMO_TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_USER_IDS: ${DEMO_TELEGRAM_ALLOWED_USER_IDS}
+      TELEGRAM_MODE: ${DEMO_TELEGRAM_MODE:-polling}
+    depends_on:
+      redis:
+        condition: service_healthy
+      platform-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "bot"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker-demo:
+    <<: [*platform-common, *resource-worker]
+    command: ["python", "-m", "research_platform.workers.rq_app", "--tenant", "demo"]
+    environment:
+      SERVICE_NAME: worker-demo
+      TENANT_ID: ${DEMO_TENANT_ID:-demo}
+      WORKER_CONCURRENCY: "1"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Collective tenant (anonymous GitHub): docker compose --profile collective up -d
+  bot-collective:
+    <<: *platform-common
+    profiles: ["collective"]
+    command: ["python", "-m", "research_platform.bots.collective_bot"]
+    env_file:
+      - .env
+      - secrets/collective/collective.env
+    environment:
+      SERVICE_NAME: bot-collective
+      TENANT_ID: ${COLLECTIVE_TENANT_ID:-collective}
+      TELEGRAM_BOT_TOKEN: ${COLLECTIVE_TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ALLOWED_USER_IDS: ${COLLECTIVE_TELEGRAM_ALLOWED_USER_IDS}
+      TELEGRAM_MODE: ${COLLECTIVE_TELEGRAM_MODE:-polling}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    depends_on:
+      redis:
+        condition: service_healthy
+      platform-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "bot"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker-collective:
+    <<: *platform-common
+    profiles: ["collective"]
+    read_only: false
+    command: ["python", "-m", "research_platform.workers.rq_app", "--tenant", "collective"]
+    env_file:
+      - .env
+      - secrets/collective/collective.env
+    environment:
+      SERVICE_NAME: worker-collective
+      TENANT_ID: ${COLLECTIVE_TENANT_ID:-collective}
+      WORKER_CONCURRENCY: "1"
+      COLLECTIVE_EXPORT_DIR: /var/lib/collective/exports
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./projects:/app/projects:ro
+      - ./data/collective/exports:/var/lib/collective/exports
+      - platform_logs:/var/log/platform
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  scheduler:
+    <<: [*platform-common, *resource-small]
+    command: ["python", "-m", "research_platform.scheduler.main"]
+    environment:
+      SERVICE_NAME: scheduler
+      TENANT_ID: platform
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "research_platform.core.health", "scheduler"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Optional monitoring profile: docker compose --profile monitoring up -d ──
+  prometheus:
+    profiles: ["monitoring"]
+    image: prom/prometheus:v3.2.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - platform_internal
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 1024M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  redis-exporter:
+    profiles: ["monitoring"]
+    image: oliver006/redis_exporter:v1.67.0
+    environment:
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks:
+      - platform_internal
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  postgres-exporter:
+    profiles: ["monitoring"]
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+    networks:
+      - platform_internal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+networks:
+  platform_internal:
+    driver: bridge
+  platform_edge:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  traefik_certs:
+  prometheus_data:
+  platform_logs:

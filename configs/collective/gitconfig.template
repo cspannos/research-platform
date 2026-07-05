@@ -1,0 +1,11 @@
+# Rendered at container start from COLLECTIVE_GIT_USER_* env vars.
+# Mounted as /etc/collective/gitconfig — never use the host operator git identity.
+[user]
+	name = ${COLLECTIVE_GIT_USER_NAME}
+	email = ${COLLECTIVE_GIT_USER_EMAIL}
+[init]
+	defaultBranch = main
+[commit]
+	gpgsign = false
+[push]
+	default = simple

@@ -1,0 +1,44 @@
+tenant_id: mev
+display_name: MEV Research
+enabled: false
+
+telegram:
+  mode: polling
+  allowed_user_ids: []
+
+resources:
+  bot:
+    cpus: "0.25"
+    memory: 256M
+  worker:
+    cpus: "1.00"
+    memory: 1536M
+    concurrency: 2
+
+queues:
+  default: mev
+  high_priority: mev-high
+
+pipelines:
+  - name: mev-block-monitor
+    schedule: "*/5 * * * *"
+    description: Poll recent blocks for MEV-relevant patterns
+  - name: mev-daily-summary
+    schedule: "0 7 * * *"
+    description: Daily Telegram digest of flagged transactions
+
+tools:
+  allowed:
+    - http_get
+    - postgres_read
+    - redis_enqueue
+  denied:
+    - shell_exec
+    - filesystem_write_outside_workspace
+
+integrations:
+  rpc_url_env: MEV_ETH_RPC_URL
+
+notes: >
+  Use external RPC/indexer APIs. Do not run an archive node locally.
+  Cache only recent blocks and flagged tx metadata in Postgres.

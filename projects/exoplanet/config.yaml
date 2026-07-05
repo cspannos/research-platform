@@ -1,0 +1,50 @@
+tenant_id: exoplanet
+display_name: Exoplanet Citizen Science
+enabled: false
+
+telegram:
+  mode: polling
+  allowed_user_ids: []
+
+resources:
+  bot:
+    cpus: "0.25"
+    memory: 256M
+  worker:
+    cpus: "1.00"
+    memory: 2048M
+    concurrency: 1
+
+pipelines:
+  - name: target-ingest
+    schedule: "0 2 * * *"
+    description: Fetch selected TESS/Kepler light curves via MAST API
+  - name: candidate-scan
+    schedule: "0 4 * * *"
+    description: Run lightweight detrend/periodogram scripts on cached curves
+  - name: review-summary
+    schedule: "0 10 * * *"
+    description: Generate human-review summaries and Telegram updates
+
+data:
+  cache_dir: /var/cache/platform/exoplanet
+  max_local_cache_gb: 80
+  retention_days: 30
+
+tools:
+  allowed:
+    - http_get
+    - postgres_readwrite
+    - numpy_analysis
+    - llm_summarize
+  denied:
+    - shell_exec
+    - mirror_full_archives
+
+integrations:
+  mast_api_token_env: MAST_API_TOKEN
+
+notes: >
+  Never mirror full astronomy archives locally. Cache only targeted sectors/targets,
+  store derived features + review metadata in Postgres, and offload heavy reprocessing
+  to external batch compute when necessary.

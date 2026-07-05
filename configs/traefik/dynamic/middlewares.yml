@@ -1,0 +1,22 @@
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: strict-origin-when-cross-origin
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+
+    rate-limit:
+      rateLimit:
+        average: 50
+        burst: 100
+
+    admin-auth:
+      basicAuth:
+        users:
+          # Generate with: htpasswd -nb admin 'your-password'
+          - "admin:$$apr1$$placeholder$$replace-me"

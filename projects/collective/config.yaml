@@ -1,0 +1,52 @@
+tenant_id: collective
+display_name: AI Anarchist Collective
+enabled: false
+
+telegram:
+  mode: polling
+  allowed_user_ids: []
+
+# Publish credentials live in secrets/collective/collective.env — NOT root .env
+publish:
+  repo_env: COLLECTIVE_GITHUB_REPO
+  identity_env:
+    name: COLLECTIVE_GIT_USER_NAME
+    email: COLLECTIVE_GIT_USER_EMAIL
+  token_env: COLLECTIVE_GITHUB_TOKEN
+  enabled_env: COLLECTIVE_PUBLISH_ENABLED
+  export_dir: /var/lib/collective/exports
+
+resources:
+  bot:
+    cpus: "0.25"
+    memory: 256M
+  worker:
+    cpus: "0.50"
+    memory: 768M
+    concurrency: 1
+
+pipelines:
+  - name: draft-ingest
+    schedule: "0 */6 * * *"
+    description: Pull queued notes/links and prepare synthesis drafts
+  - name: publish-review-queue
+    schedule: "0 9 * * *"
+    description: Send review prompts to Telegram
+
+tools:
+  allowed:
+    - http_get
+    - postgres_readwrite
+    - llm_summarize
+    - github_publish
+    - export_draft
+  denied:
+    - shell_exec
+    - browser_automation
+    - git_cli
+    - gh_cli
+
+notes: >
+  Anonymous GitHub only. Content repos stay under the anon account — never in
+  research-platform personal GitHub. Default to export-only; enable publish
+  explicitly via COLLECTIVE_PUBLISH_ENABLED after opsec review.
