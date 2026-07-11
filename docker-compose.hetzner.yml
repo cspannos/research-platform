@@ -1,0 +1,26 @@
+# Hetzner override — avoids conflict with openclaw-mev-stack on localhost:5432/6379
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.hetzner.yml up -d
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5433:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  platform-api:
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  traefik:
+    ports:
+      - "80:80"
+      - "443:443"
+
+  worker-exoplanet:
+    environment:
+      EXOPLANET_CACHE_DIR: /var/cache/platform/exoplanet

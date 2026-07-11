@@ -55,6 +55,19 @@ EXOPLANET_LLM_SUMMARIES=true
 OPENROUTER_API_KEY=sk-or-...
 ```
 
+### Hetzner deployment
+
+Server catalogue and port-conflict notes: **[docs/HETZNER.md](docs/HETZNER.md)**
+
+```bash
+# on server as validator, after clone + .env edit:
+make hetzner-prep
+make hetzner-build
+make hetzner-up
+```
+
+Uses `docker-compose.hetzner.yml` (Postgres **5433**, Redis **6380**) alongside existing `openclaw-mev-stack`.
+
 ---
 
 ## 1. Architecture

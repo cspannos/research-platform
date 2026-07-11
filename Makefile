@@ -61,3 +61,12 @@ exoplanet-up:
 
 exoplanet-logs:
 	docker compose --profile exoplanet logs -f bot-exoplanet worker-exoplanet
+
+hetzner-prep:
+	bash scripts/prepare-hetzner.sh
+
+hetzner-up:
+	docker compose -f docker-compose.yml -f docker-compose.hetzner.yml up -d postgres redis platform-api scheduler
+
+hetzner-build:
+	docker compose -f docker-compose.yml -f docker-compose.hetzner.yml build
