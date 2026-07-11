@@ -36,7 +36,7 @@ for port in 5432 6379; do
     echo "  OK: ${port} in use by MEV stack (expected)"
   fi
 done
-for port in 5433 6380 8000; do
+for port in 5433 6380 8001; do
   if ss -tln | grep -q ":${port} "; then
     echo "  WARN: port ${port} already bound — check before deploy"
   else
@@ -54,6 +54,6 @@ echo "  ${COMPOSE[*]} --profile exoplanet up -d bot-exoplanet worker-exoplanet"
 echo "  ${COMPOSE[*]} --profile collective up -d bot-collective worker-collective"
 echo
 echo "Health check:"
-echo "  curl -s http://127.0.0.1:8000/health/live"
+echo "  curl -s http://127.0.0.1:8001/health/live"
 echo
 echo "See docs/HETZNER.md for full catalogue and DNS/UFW steps."

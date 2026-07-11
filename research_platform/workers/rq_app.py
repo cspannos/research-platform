@@ -4,7 +4,7 @@ import argparse
 import sys
 
 import redis
-from rq import Connection, Queue, Worker
+from rq import Queue, Worker
 
 from research_platform.core.config import get_settings
 from research_platform.core.logging import configure_logging, get_logger
@@ -41,9 +41,8 @@ def main() -> None:
     queue = Queue(tenant.queue_name, connection=conn)
 
     logger.info("worker_starting", queue=tenant.queue_name, redis_db=tenant.redis_db)
-    with Connection(conn):
-        worker = Worker([queue], connection=conn)
-        worker.work(with_scheduler=False)
+    worker = Worker([queue], connection=conn)
+    worker.work(with_scheduler=False)
 
 
 if __name__ == "__main__":

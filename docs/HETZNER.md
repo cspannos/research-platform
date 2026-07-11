@@ -78,7 +78,7 @@ To clone `research-platform`, either:
 |---------|----------------------|-------------------------|
 | Postgres | `127.0.0.1:5432` | `127.0.0.1:5433` → container 5432 |
 | Redis | `127.0.0.1:6379` | `127.0.0.1:6380` → container 6379 |
-| API | — | `127.0.0.1:8000` |
+| API | — | `127.0.0.1:8001` |
 | Traefik | — | `0.0.0.0:80`, `0.0.0.0:443` (after UFW + DNS) |
 
 Use `docker-compose.hetzner.yml` override when deploying.
@@ -154,8 +154,8 @@ EXOPLANET_LLM_SUMMARIES=false
 Until DNS exists, use SSH tunnels:
 
 ```bash
-ssh -L 8000:127.0.0.1:8000 validator@168.119.88.189
-# Review: http://127.0.0.1:8000/review/?token=YOUR_ADMIN_TOKEN
+ssh -L 8001:127.0.0.1:8001 validator@168.119.88.189
+# Review: http://127.0.0.1:8001/review/?token=YOUR_ADMIN_TOKEN
 ```
 
 ---
