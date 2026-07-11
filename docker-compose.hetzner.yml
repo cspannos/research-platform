@@ -13,7 +13,7 @@ services:
       - "127.0.0.1:6380:6379"
 
   platform-api:
-    ports:
+    ports: !reset
       - "127.0.0.1:8001:8000"
 
   traefik:
