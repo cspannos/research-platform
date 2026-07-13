@@ -290,6 +290,29 @@ async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     text = (update.message.text or "").strip() if update.message else ""
     if not text or text.startswith("/"):
         return
+
+    # Catch typos like ": /ingest" or "./scan" that Telegram won't treat as commands.
+    cleaned = text.lstrip(":;,.•*-–— \t")
+    known = {
+        "start",
+        "targets",
+        "ingest",
+        "scan",
+        "analyze",
+        "summaries",
+        "notify",
+        "ask",
+    }
+    if cleaned.startswith("/"):
+        cmd = cleaned[1:].split()[0].split("@", 1)[0].lower()
+        if cmd in known:
+            await update.message.reply_text(
+                f"That looks like a command, but Telegram didn't receive a slash-command.\n"
+                f"Send it alone as: /{cmd}\n"
+                f"(no leading ':' or other characters)"
+            )
+            return
+
     await _reply_expert(update, text, None)
 
 
