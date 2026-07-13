@@ -81,25 +81,35 @@ def _target_search_names(target: TargetSpec) -> list[str]:
 
 def _query_mast_observations(target: TargetSpec, token: str) -> list[dict]:
     mission = target.mission.upper()
+    # Try with and without timeseries filter — some CAOM rows omit dataproduct_type.
+    filter_sets: list[list[dict]] = []
     for name in _target_search_names(target):
+        base = [
+            {"paramName": "obs_collection", "values": [mission]},
+            {"paramName": "target_name", "values": [name]},
+        ]
+        filter_sets.append(
+            base
+            + [{"paramName": "dataproduct_type", "values": ["timeseries"]}]
+        )
+        filter_sets.append(base)
+
+    for filters in filter_sets:
         request = {
             "service": "Mast.Caom.Filtered",
             "format": "json",
-            "params": {
-                "columns": "*",
-                "filters": [
-                    {"paramName": "obs_collection", "values": [mission]},
-                    {"paramName": "dataproduct_type", "values": ["timeseries"]},
-                    {"paramName": "target_name", "values": [name]},
-                ],
-            },
+            "params": {"columns": "*", "filters": filters},
             "pagesize": 20,
             "page": 1,
         }
         data = _mast_invoke(request, token)
         rows = data.get("data") or []
         if rows:
-            logger.info("mast_observations_found", target=target.id, count=len(rows), query=name)
+            query_name = next(
+                (f["values"][0] for f in filters if f.get("paramName") == "target_name"),
+                target.id,
+            )
+            logger.info("mast_observations_found", target=target.id, count=len(rows), query=query_name)
             return rows
     return []
 

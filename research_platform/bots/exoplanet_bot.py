@@ -87,7 +87,11 @@ def _wait_for_job(job: Any, timeout_s: float) -> dict[str, Any]:
         job.refresh()
         status = str(job.get_status())
         if status.endswith("finished") or getattr(job, "is_finished", False):
-            return {"ok": True, "result": job.return_value}
+            # RQ 2.x: return_value is a method; result is a property.
+            value = job.return_value(refresh=True) if callable(getattr(job, "return_value", None)) else job.return_value
+            if value is None:
+                value = getattr(job, "result", None)
+            return {"ok": True, "result": value}
         if status.endswith("failed") or getattr(job, "is_failed", False):
             error = (job.exc_info or "job failed").strip().splitlines()[-1]
             return {"ok": False, "error": error}
