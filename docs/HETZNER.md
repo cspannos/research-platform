@@ -138,9 +138,10 @@ EXOPLANET_TELEGRAM_BOT_TOKEN=
 EXOPLANET_TELEGRAM_ALLOWED_USER_IDS=
 
 # Optional
-MAST_API_TOKEN=
-OPENROUTER_API_KEY=
+MAST_API_TOKEN=               # https://auth.mast.stsci.edu/
+OPENROUTER_API_KEY=           # review Enrich + Telegram /ask
 EXOPLANET_LLM_SUMMARIES=false
+EXOPLANET_ALLOW_SYNTHETIC=true  # set false after MAST works to forbid fake curves
 ```
 
 ### DNS records (when going public)

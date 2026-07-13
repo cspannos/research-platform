@@ -1,6 +1,3 @@
-from unittest.mock import MagicMock, patch
-
-import pytest
 from fastapi.testclient import TestClient
 
 from projects.exoplanet.db.models import Candidate, Target
@@ -20,6 +17,8 @@ def test_review_dashboard_requires_token(client: TestClient) -> None:
 
 
 def test_review_dashboard_loads_with_token(client: TestClient) -> None:
+    from unittest.mock import patch
+
     with patch("research_platform.api.review_dashboard.list_candidate_rows", return_value=[]):
         response = client.get("/review/?token=test-admin-token")
     assert response.status_code == 200
@@ -32,7 +31,7 @@ def test_review_host_root_redirects(client: TestClient) -> None:
     assert response.headers["location"].startswith("/review/")
 
 
-def test_llm_summary_fallback_without_api_key() -> None:
+def test_llm_summary_fallback_without_api_key(monkeypatch) -> None:
     candidate = Candidate(
         id=1,
         target_id=1,
@@ -49,10 +48,14 @@ def test_llm_summary_fallback_without_api_key() -> None:
         mission="TESS",
         external_id="260128064",
     )
-    with patch("projects.exoplanet.pipelines.llm.get_settings") as mock_settings:
-        mock_settings.return_value = MagicMock(openrouter_api_key="")
-        with patch("projects.exoplanet.pipelines.llm.get_exoplanet_settings") as mock_exo:
-            mock_exo.return_value = MagicMock(openrouter_api_key="")
-            text, source = generate_llm_summary(candidate, target)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    from projects.exoplanet import settings as exo_settings
+    from research_platform.core import config as platform_config
+
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()
+    text, source = generate_llm_summary(candidate, target)
     assert source == "template"
     assert "TOI-715" in text
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()

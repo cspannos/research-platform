@@ -63,7 +63,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /scan — analyze all cached targets\n"
         "  /analyze <slug> — analyze one target\n"
         "  /summaries — generate human-review summaries\n"
-        "  /notify — send Telegram digest of pending candidates"
+        "  /notify — send Telegram digest of pending candidates\n"
+        "  /ask [candidate_id] <question> — exoplanet expert (same LLM as review Enrich)\n"
+        "Or just send a free-text question."
     )
 
 
@@ -230,6 +232,67 @@ async def notify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _enqueue_and_report(update, "notify", exoplanet_notify_telegram_job)
 
 
+def _parse_ask_args(args: list[str]) -> tuple[int | None, str]:
+    """Parse `/ask [id] question...` → (candidate_id, question)."""
+    if not args:
+        return None, ""
+    first = args[0].lstrip("#")
+    if first.isdigit() and len(args) >= 2:
+        return int(first), " ".join(args[1:]).strip()
+    return None, " ".join(args).strip()
+
+
+async def _reply_expert(update: Update, question: str, candidate_id: int | None) -> None:
+    from projects.exoplanet.pipelines.expert import answer_exoplanet_question
+
+    await update.message.reply_text("Thinking…")
+    result = await asyncio.to_thread(
+        answer_exoplanet_question,
+        question,
+        candidate_id=candidate_id,
+    )
+    if not result.get("ok"):
+        reason = result.get("reason", "unknown")
+        hint = result.get("hint")
+        text = f"Expert unavailable ({reason})."
+        if hint:
+            text += f"\n{hint}"
+        await update.message.reply_text(text)
+        return
+    answer = str(result.get("answer") or "")
+    prefix = f"[candidate #{candidate_id} · {result.get('source')}]\n" if candidate_id else f"[{result.get('source')}]\n"
+    text = prefix + answer
+    if len(text) > 3500:
+        text = text[:3490] + "\n…"
+    await update.message.reply_text(text)
+
+
+async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _guard(update):
+        return
+    candidate_id, question = _parse_ask_args(list(context.args or []))
+    if not question:
+        await update.message.reply_text(
+            "Usage:\n"
+            "  /ask Is a 0.6 day period plausible for TOI-715?\n"
+            "  /ask 8 Could this be an eclipsing binary?"
+        )
+        return
+    await _reply_expert(update, question, candidate_id)
+
+
+async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Authorized free-text messages go to the exoplanet expert."""
+    settings = get_settings()
+    if not _authorized(update, settings.allowed_user_ids):
+        await _deny(update)
+        return
+    text = (update.message.text or "").strip() if update.message else ""
+    if not text or text.startswith("/"):
+        return
+    await _reply_expert(update, text, None)
+
+
 async def echo_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     settings = get_settings()
     if _authorized(update, settings.allowed_user_ids):
@@ -251,6 +314,8 @@ def main() -> None:
     app.add_handler(CommandHandler("analyze", analyze))
     app.add_handler(CommandHandler("summaries", summaries))
     app.add_handler(CommandHandler("notify", notify))
+    app.add_handler(CommandHandler("ask", ask))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, free_text_ask))
     app.add_handler(MessageHandler(filters.ALL, echo_unauthorized))
 
     logger.info("exoplanet_bot_starting")

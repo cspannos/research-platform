@@ -139,6 +139,9 @@ services:
     environment:
       SERVICE_NAME: platform-api
       TENANT_ID: platform
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-3.5-haiku}
+      EXOPLANET_LLM_SUMMARIES: ${EXOPLANET_LLM_SUMMARIES:-false}
     depends_on:
       postgres:
         condition: service_healthy
@@ -279,6 +282,8 @@ services:
       TELEGRAM_BOT_TOKEN: ${EXOPLANET_TELEGRAM_BOT_TOKEN}
       TELEGRAM_ALLOWED_USER_IDS: ${EXOPLANET_TELEGRAM_ALLOWED_USER_IDS}
       TELEGRAM_MODE: ${EXOPLANET_TELEGRAM_MODE:-polling}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-3.5-haiku}
     deploy:
       resources:
         limits:
@@ -307,6 +312,10 @@ services:
       WORKER_CONCURRENCY: "1"
       EXOPLANET_CACHE_DIR: /var/cache/platform/exoplanet
       MAST_API_TOKEN: ${MAST_API_TOKEN}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      EXOPLANET_ALLOW_SYNTHETIC: ${EXOPLANET_ALLOW_SYNTHETIC:-true}
+      EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-3.5-haiku}
+      EXOPLANET_LLM_SUMMARIES: ${EXOPLANET_LLM_SUMMARIES:-false}
     volumes:
       - ./configs:/app/configs:ro
       - ./projects:/app/projects:ro

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from projects.exoplanet.db.models import Candidate, Target, get_db_session, init_db
-from projects.exoplanet.pipelines.llm import generate_llm_summary
+from projects.exoplanet.pipelines.expert import generate_review_summary
 from projects.exoplanet.review.queries import upsert_summary
 from research_platform.core.logging import get_logger
 
@@ -21,7 +21,7 @@ def enrich_candidate_summary(candidate_id: int) -> dict[str, object]:
         if row is None:
             return {"ok": False, "reason": "not_found"}
         candidate, target = row
-        text, source = generate_llm_summary(candidate, target)
+        text, source = generate_review_summary(candidate, target)
         upsert_summary(candidate_id, text, source=source)
         logger.info("candidate_summary_enriched", candidate_id=candidate_id, source=source)
         return {"ok": True, "candidate_id": candidate_id, "source": source, "summary": text}

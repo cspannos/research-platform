@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from projects.exoplanet.db.models import Candidate, ReviewSummary, Target, get_db_session, init_db
-from projects.exoplanet.pipelines.llm import generate_llm_summary
+from projects.exoplanet.pipelines.expert import (
+    generate_review_summary,
+    template_review_summary,
+)
 from projects.exoplanet.review.queries import upsert_summary
 from projects.exoplanet.settings import get_exoplanet_settings
 from research_platform.core.logging import get_logger
@@ -10,14 +13,7 @@ logger = get_logger(__name__)
 
 
 def _build_summary_text(candidate: Candidate, target: Target) -> str:
-    return (
-        f"Candidate #{candidate.id} — {target.name} ({target.mission})\n"
-        f"Period: {candidate.period_days:.3f} days\n"
-        f"Depth: ~{candidate.depth_ppm:.0f} ppm | SNR: {candidate.snr:.2f}\n"
-        f"Reason: {candidate.flag_reason}\n"
-        f"Status: {candidate.status}\n"
-        f"Review at /review/candidates/{candidate.id}"
-    )
+    return template_review_summary(candidate, target)
 
 
 def generate_summaries_for_pending(limit: int = 10) -> dict[str, object]:
@@ -49,7 +45,7 @@ def generate_summaries_for_pending(limit: int = 10) -> dict[str, object]:
     created = []
     for candidate, target in to_create:
         if settings.llm_summaries:
-            text, source = generate_llm_summary(candidate, target)
+            text, source = generate_review_summary(candidate, target)
         else:
             text, source = _build_summary_text(candidate, target), "template"
         upsert_summary(candidate.id, text, source=source)
