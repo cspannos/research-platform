@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from projects.exoplanet.db.models import Candidate, Target
