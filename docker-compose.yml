@@ -284,6 +284,8 @@ services:
       TELEGRAM_MODE: ${EXOPLANET_TELEGRAM_MODE:-polling}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-haiku-4.5}
+      PLATFORM_ADMIN_TOKEN: ${PLATFORM_ADMIN_TOKEN}
+      REVIEW_BASE_URL: ${REVIEW_BASE_URL:-http://10.66.66.1:8001}
     deploy:
       resources:
         limits:

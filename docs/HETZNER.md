@@ -78,7 +78,7 @@ To clone `research-platform`, either:
 |---------|----------------------|-------------------------|
 | Postgres | `127.0.0.1:5432` | `127.0.0.1:5433` → container 5432 |
 | Redis | `127.0.0.1:6379` | `127.0.0.1:6380` → container 6379 |
-| API | — | `127.0.0.1:8001` |
+| API | — | `127.0.0.1:8001` + WireGuard `10.66.66.1:8001` |
 | Traefik | — | `0.0.0.0:80`, `0.0.0.0:443` (after UFW + DNS) |
 
 Use `docker-compose.hetzner.yml` override when deploying.
@@ -152,9 +152,13 @@ EXOPLANET_ALLOW_SYNTHETIC=true  # set false after MAST works to forbid fake curv
 | `review.your.domain` | `168.119.88.189` |
 | `traefik.your.domain` | `168.119.88.189` |
 
-Until DNS exists, use SSH tunnels:
+Until DNS exists, use WireGuard (preferred) or an SSH tunnel:
 
 ```bash
+# On phone/laptop with WireGuard connected to the server:
+# Telegram: /review  → bot replies with http://10.66.66.1:8001/review/?token=...
+
+# Or SSH tunnel from laptop:
 ssh -L 8001:127.0.0.1:8001 validator@168.119.88.189
 # Review: http://127.0.0.1:8001/review/?token=YOUR_ADMIN_TOKEN
 ```
@@ -192,8 +196,8 @@ From laptop (WireGuard peer):
 
 ```bash
 ssh validator@10.66.66.1
-# or
-ssh root@168.119.88.189
+# Review UI (same VPN): http://10.66.66.1:8001/review/?token=YOUR_ADMIN_TOKEN
+# Or ask the exoplanet bot: /review
 ```
 
-WireGuard was **not** active on the local machine during inventory; use public IP or bring up `wg0` first.
+WireGuard must be active on the client; UFW does not expose 8001 publicly.

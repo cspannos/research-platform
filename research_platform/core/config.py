@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     platform_env: str = Field(default="development", alias="PLATFORM_ENV")
     platform_domain: str = Field(default="localhost", alias="PLATFORM_DOMAIN")
     platform_admin_token: str = Field(default="dev-token", alias="PLATFORM_ADMIN_TOKEN")
+    review_base_url: str = Field(default="http://10.66.66.1:8001", alias="REVIEW_BASE_URL")
 
     service_name: str = Field(default="platform", alias="SERVICE_NAME")
     tenant_id: str = Field(default="platform", alias="TENANT_ID")

@@ -15,6 +15,7 @@ services:
   platform-api:
     ports: !override
       - "127.0.0.1:8001:8000"
+      - "10.66.66.1:8001:8000"
 
   traefik:
     ports:

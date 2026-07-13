@@ -65,6 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /summaries — generate human-review summaries\n"
         "  /notify — send Telegram digest of pending candidates\n"
         "  /ask [candidate_id] <question> — exoplanet expert (same LLM as review Enrich)\n"
+        "  /review — WireGuard URL + admin token for the review dashboard\n"
         "Or just send a free-text question."
     )
 
@@ -285,6 +286,28 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_expert(update, question, candidate_id)
 
 
+async def review_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the admin review dashboard URL (WireGuard) including the admin token."""
+    if not await _guard(update):
+        return
+    settings = get_settings()
+    base = (settings.review_base_url or "http://10.66.66.1:8001").rstrip("/")
+    token = settings.platform_admin_token
+    if not token or token in {"dev-token", "change-me-long-random-string"}:
+        await update.message.reply_text(
+            "PLATFORM_ADMIN_TOKEN is not configured (still a placeholder).\n"
+            "Set it in .env and recreate bot-exoplanet / platform-api."
+        )
+        return
+    url = f"{base}/review/?token={token}"
+    await update.message.reply_text(
+        "Exoplanet review dashboard (use on WireGuard / private network):\n"
+        f"{url}\n\n"
+        "Requires phone/laptop joined to the server WireGuard VPN.\n"
+        "This message includes the admin token — delete the chat message when done."
+    )
+
+
 async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Authorized free-text messages go to the exoplanet expert."""
     settings = get_settings()
@@ -306,6 +329,7 @@ async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "summaries",
         "notify",
         "ask",
+        "review",
     }
     if cleaned.startswith("/"):
         cmd = cleaned[1:].split()[0].split("@", 1)[0].lower()
@@ -342,6 +366,7 @@ def main() -> None:
     app.add_handler(CommandHandler("summaries", summaries))
     app.add_handler(CommandHandler("notify", notify))
     app.add_handler(CommandHandler("ask", ask))
+    app.add_handler(CommandHandler("review", review_link))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, free_text_ask))
     app.add_handler(MessageHandler(filters.ALL, echo_unauthorized))
 
