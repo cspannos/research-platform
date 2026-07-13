@@ -23,11 +23,25 @@ def _authorized(update: Update, allowed: set[int]) -> bool:
     return bool(user and allowed and user.id in allowed)
 
 
+async def _deny(update: Update) -> None:
+    """Reject with the caller's Telegram user id so allowlist setup is self-service."""
+    user = update.effective_user
+    user_id = user.id if user else "unknown"
+    logger.warning("telegram_unauthorized", telegram_user_id=user_id)
+    if update.message:
+        await update.message.reply_text(
+            f"Unauthorized.\n"
+            f"Your Telegram user id is: {user_id}\n"
+            f"Set EXOPLANET_TELEGRAM_ALLOWED_USER_IDS={user_id} in .env "
+            f"and recreate bot-exoplanet."
+        )
+
+
 async def _guard(update: Update) -> bool:
     settings = get_settings()
     if _authorized(update, settings.allowed_user_ids):
         return True
-    await update.message.reply_text("Unauthorized.")
+    await _deny(update)
     return False
 
 
@@ -102,7 +116,7 @@ async def echo_unauthorized(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     settings = get_settings()
     if _authorized(update, settings.allowed_user_ids):
         return
-    await update.message.reply_text("Unauthorized.")
+    await _deny(update)
 
 
 def main() -> None:
