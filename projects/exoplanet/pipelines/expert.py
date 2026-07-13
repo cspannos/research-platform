@@ -10,7 +10,7 @@ from research_platform.core.logging import get_logger
 logger = get_logger(__name__)
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-DEFAULT_MODEL = "anthropic/claude-3.5-haiku"
+DEFAULT_MODEL = "anthropic/claude-haiku-4.5"
 
 EXPERT_SYSTEM_PROMPT = (
     "You are an expert exoplanet astrophysicist and citizen-science mentor. "
@@ -72,6 +72,7 @@ def chat_exoplanet_expert(
                 "exoplanet_expert_failed",
                 status=response.status_code,
                 body=response.text[:200],
+                model=_model_name(),
             )
             return None, "unavailable"
         content = response.json()["choices"][0]["message"]["content"].strip()

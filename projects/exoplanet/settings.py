@@ -33,7 +33,7 @@ class ExoplanetSettings(BaseSettings):
     snr_threshold: float = Field(default=5.0, alias="EXOPLANET_SNR_THRESHOLD")
     openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
     llm_summaries: bool = Field(default=False, alias="EXOPLANET_LLM_SUMMARIES")
-    llm_model: str = Field(default="anthropic/claude-3.5-haiku", alias="EXOPLANET_LLM_MODEL")
+    llm_model: str = Field(default="anthropic/claude-haiku-4.5", alias="EXOPLANET_LLM_MODEL")
     allow_synthetic: bool = Field(default=True, alias="EXOPLANET_ALLOW_SYNTHETIC")
 
 
