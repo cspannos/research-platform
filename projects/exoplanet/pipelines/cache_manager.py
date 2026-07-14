@@ -9,10 +9,16 @@ from research_platform.core.logging import get_logger
 logger = get_logger(__name__)
 
 
-def ensure_cache_dir() -> Path:
+def ensure_cache_dir(*, create: bool = True) -> Path:
     settings = get_exoplanet_settings()
     cache = Path(settings.cache_dir)
-    cache.mkdir(parents=True, exist_ok=True)
+    if create:
+        try:
+            cache.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            # Read-only mounts (platform-api) still need the path for plot serving.
+            if not cache.exists():
+                raise
     return cache
 
 
@@ -52,12 +58,16 @@ def target_cache_path(slug: str) -> Path:
     return ensure_cache_dir() / f"{slug}.npz"
 
 
-def vetting_dir(candidate_id: int) -> Path:
-    """Directory for diagnostic PNGs: {cache}/vetting/{candidate_id}/."""
+def vetting_dir(candidate_id: int, *, create: bool = False) -> Path:
+    """Directory for diagnostic PNGs: {cache}/vetting/{candidate_id}/.
+
+    create=False for read paths (platform-api mounts cache read-only).
+    """
     path = ensure_cache_dir() / "vetting" / str(candidate_id)
-    path.mkdir(parents=True, exist_ok=True)
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def vetting_plot_path(candidate_id: int, plot_name: str) -> Path:
-    return vetting_dir(candidate_id) / plot_name
+def vetting_plot_path(candidate_id: int, plot_name: str, *, create: bool = False) -> Path:
+    return vetting_dir(candidate_id, create=create) / plot_name

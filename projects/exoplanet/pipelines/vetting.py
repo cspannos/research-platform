@@ -194,7 +194,7 @@ def generate_vetting_plots(
     if len(time) < 10:
         return {"ok": False, "plots": [], "reason": "insufficient_points"}
 
-    out_dir = vetting_dir(candidate_id)
+    out_dir = vetting_dir(candidate_id, create=True)
     written: list[str] = []
     t_plot, f_plot = _downsample(time, flux)
     epoch = float(t0) if t0 is not None and np.isfinite(t0) else float(np.median(time))
@@ -272,9 +272,12 @@ def generate_vetting_plots(
 
 
 def list_available_plots(candidate_id: int) -> list[str]:
+    root = vetting_dir(candidate_id, create=False)
+    if not root.is_dir():
+        return []
     available = []
     for name in PLOT_NAMES:
-        if vetting_plot_path(candidate_id, name).is_file():
+        if (root / name).is_file():
             available.append(name)
     return available
 
