@@ -16,11 +16,15 @@ def test_format_analyze_interesting() -> None:
             "snr": 87.4,
             "depth_ppm": 1200.0,
             "flag_reason": "peak",
+            "plots_ready": True,
+            "t0": 12.3456,
         }
     )
     assert "toi-715" in text
     assert "Candidate #7" in text
     assert "Flagged: yes" in text
+    assert "Vetting plots ready" in text
+    assert "t0≈" in text
 
 
 def test_format_scan() -> None:

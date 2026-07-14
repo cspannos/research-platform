@@ -37,6 +37,14 @@ class CandidateOut(BaseModel):
     summary: str | None = None
     summary_source: str | None = None
     comments: list[CommentOut] = Field(default_factory=list)
+    t0: float | None = None
+    duration_hours: float | None = None
+    odd_depth_ppm: float | None = None
+    even_depth_ppm: float | None = None
+    odd_even_delta_ppm: float | None = None
+    geometry_note: str | None = None
+    plots_ready: bool = False
+    available_plots: list[str] = Field(default_factory=list)
 
 
 class CandidateStatusUpdate(BaseModel):
@@ -71,6 +79,14 @@ def _serialize(row) -> CandidateOut:
             )
             for c in row.comments
         ],
+        t0=row.t0,
+        duration_hours=row.duration_hours,
+        odd_depth_ppm=row.odd_depth_ppm,
+        even_depth_ppm=row.even_depth_ppm,
+        odd_even_delta_ppm=row.odd_even_delta_ppm,
+        geometry_note=row.geometry_note,
+        plots_ready=row.plots_ready,
+        available_plots=list(row.available_plots or []),
     )
 
 

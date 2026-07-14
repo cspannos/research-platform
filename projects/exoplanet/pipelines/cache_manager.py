@@ -50,3 +50,14 @@ def enforce_retention() -> dict[str, int]:
 
 def target_cache_path(slug: str) -> Path:
     return ensure_cache_dir() / f"{slug}.npz"
+
+
+def vetting_dir(candidate_id: int) -> Path:
+    """Directory for diagnostic PNGs: {cache}/vetting/{candidate_id}/."""
+    path = ensure_cache_dir() / "vetting" / str(candidate_id)
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def vetting_plot_path(candidate_id: int, plot_name: str) -> Path:
+    return vetting_dir(candidate_id) / plot_name

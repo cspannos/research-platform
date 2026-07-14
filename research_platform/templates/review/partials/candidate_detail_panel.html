@@ -18,6 +18,44 @@
   </p>
   <p class="meta">Flagged: {{ candidate.flag_reason }}</p>
 
+  <h3 style="margin-top:1rem;">Transit geometry</h3>
+  {% if candidate.t0 is not none %}
+  <p class="meta">
+    t0 {{ "%.6f"|format(candidate.t0) }}
+    {% if candidate.duration_hours is not none %}
+    · duration {{ "%.2f"|format(candidate.duration_hours) }} h
+    {% endif %}
+    {% if candidate.odd_depth_ppm is not none and candidate.even_depth_ppm is not none %}
+    · odd/even {{ "%.0f"|format(candidate.odd_depth_ppm) }} /
+      {{ "%.0f"|format(candidate.even_depth_ppm) }} ppm
+      {% if candidate.odd_even_delta_ppm is not none %}
+      (Δ {{ "%.0f"|format(candidate.odd_even_delta_ppm) }})
+      {% endif %}
+    {% endif %}
+  </p>
+  {% else %}
+  <p class="meta">Geometry unavailable{% if candidate.geometry_note %}: {{ candidate.geometry_note }}{% endif %}</p>
+  {% endif %}
+  {% if candidate.geometry_note and candidate.t0 is not none %}
+  <p class="meta">Note: {{ candidate.geometry_note }}</p>
+  {% endif %}
+
+  <h3 style="margin-top:1rem;">Vetting plots</h3>
+  {% if candidate.available_plots %}
+  <div class="plot-grid">
+    {% for plot in candidate.available_plots %}
+    <figure class="plot">
+      <img src="/review/candidates/{{ candidate.id }}/plots/{{ plot }}?token={{ request.query_params.get('token', '') }}"
+           alt="{{ plot }}"
+           loading="lazy">
+      <figcaption class="meta">{{ plot.replace('_', ' ').replace('.png', '') }}</figcaption>
+    </figure>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="meta">No light-curve cache plots yet. Re-run /analyze (or vet job) after ingest — or cache is missing.</p>
+  {% endif %}
+
   <h3 style="margin-top:1rem;">Review summary</h3>
   {% if candidate.summary %}
   <div class="summary">{{ candidate.summary }}</div>

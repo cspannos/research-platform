@@ -8,6 +8,12 @@ from scipy.signal import lombscargle
 
 from projects.exoplanet.db.models import Candidate, Target, get_db_session, init_db
 from projects.exoplanet.pipelines.cache_manager import target_cache_path
+from projects.exoplanet.pipelines.vetting import (
+    estimate_transit_geometry,
+    generate_vetting_plots,
+    list_available_plots,
+    load_cached_lc,
+)
 from projects.exoplanet.settings import get_exoplanet_settings
 from research_platform.core.logging import get_logger
 
@@ -72,6 +78,52 @@ def analyze_lightcurve(time: np.ndarray, flux: np.ndarray) -> AnalysisResult:
     )
 
 
+def _apply_geometry_and_plots(
+    candidate: Candidate,
+    slug: str,
+    time: np.ndarray,
+    flux: np.ndarray,
+) -> dict[str, object]:
+    """Compute geometry metrics + PNGs; mutate candidate fields in-session."""
+    settings = get_exoplanet_settings()
+    geometry = estimate_transit_geometry(time, flux, candidate.period_days)
+    candidate.t0 = geometry.t0
+    candidate.duration_hours = geometry.duration_hours
+    candidate.odd_depth_ppm = geometry.odd_depth_ppm
+    candidate.even_depth_ppm = geometry.even_depth_ppm
+    candidate.odd_even_delta_ppm = geometry.odd_even_delta_ppm
+    candidate.geometry_note = geometry.note
+
+    plot_result = generate_vetting_plots(
+        candidate.id,
+        time,
+        flux,
+        candidate.period_days,
+        t0=geometry.t0,
+        min_period_days=settings.min_period_days,
+        max_period_days=settings.max_period_days,
+    )
+    candidate.plots_ready = bool(plot_result.get("ok"))
+    if not candidate.plots_ready and plot_result.get("reason"):
+        extra = f"plots unavailable: {plot_result['reason']}"
+        if candidate.geometry_note:
+            candidate.geometry_note = f"{candidate.geometry_note}; {extra}"
+        else:
+            candidate.geometry_note = extra
+
+    return {
+        "t0": candidate.t0,
+        "duration_hours": candidate.duration_hours,
+        "odd_depth_ppm": candidate.odd_depth_ppm,
+        "even_depth_ppm": candidate.even_depth_ppm,
+        "odd_even_delta_ppm": candidate.odd_even_delta_ppm,
+        "geometry_note": candidate.geometry_note,
+        "plots_ready": candidate.plots_ready,
+        "plots": list_available_plots(candidate.id),
+        "slug": slug,
+    }
+
+
 def analyze_target_slug(slug: str) -> dict[str, object]:
     init_db()
     time, flux = _load_cached_curve(slug)
@@ -84,6 +136,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             raise ValueError(f"Unknown target slug: {slug}")
 
         candidate_id = None
+        vetting: dict[str, object] = {}
         if result.is_interesting:
             candidate = Candidate(
                 target_id=target.id,
@@ -97,6 +150,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             session.add(candidate)
             session.flush()
             candidate_id = candidate.id
+            vetting = _apply_geometry_and_plots(candidate, slug, time, flux)
             session.commit()
 
         logger.info(
@@ -105,8 +159,10 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             interesting=result.is_interesting,
             period_days=result.period_days,
             snr=result.snr,
+            candidate_id=candidate_id,
+            plots_ready=vetting.get("plots_ready"),
         )
-        return {
+        payload: dict[str, object] = {
             "target": slug,
             "interesting": result.is_interesting,
             "candidate_id": candidate_id,
@@ -115,6 +171,52 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             "snr": result.snr,
             "flag_reason": result.flag_reason,
         }
+        payload.update(vetting)
+        return payload
+    finally:
+        session.close()
+
+
+def vet_candidate(candidate_id: int) -> dict[str, object]:
+    """
+    Recompute geometry + diagnostic plots for an existing candidate.
+
+    Idempotent; used when LC cache appears after detection or to refresh Phase A artifacts.
+    """
+    init_db()
+    session = get_db_session()
+    try:
+        row = (
+            session.query(Candidate, Target)
+            .join(Target, Candidate.target_id == Target.id)
+            .filter(Candidate.id == candidate_id)
+            .one_or_none()
+        )
+        if row is None:
+            return {"ok": False, "reason": "not_found", "candidate_id": candidate_id}
+        candidate, target = row
+        cached = load_cached_lc(target.slug)
+        if cached is None:
+            candidate.geometry_note = "unavailable: no light-curve cache"
+            candidate.plots_ready = False
+            candidate.t0 = None
+            candidate.duration_hours = None
+            candidate.odd_depth_ppm = None
+            candidate.even_depth_ppm = None
+            candidate.odd_even_delta_ppm = None
+            session.commit()
+            return {
+                "ok": False,
+                "reason": "no_cache",
+                "candidate_id": candidate_id,
+                "geometry_note": candidate.geometry_note,
+                "plots_ready": False,
+            }
+
+        time, flux = cached
+        vetting = _apply_geometry_and_plots(candidate, target.slug, time, flux)
+        session.commit()
+        return {"ok": True, "candidate_id": candidate_id, **vetting}
     finally:
         session.close()
 

@@ -36,6 +36,14 @@ class CandidateRow:
     summary: str | None
     summary_source: str | None
     comments: list[CommentRow]
+    t0: float | None = None
+    duration_hours: float | None = None
+    odd_depth_ppm: float | None = None
+    even_depth_ppm: float | None = None
+    odd_even_delta_ppm: float | None = None
+    geometry_note: str | None = None
+    plots_ready: bool = False
+    available_plots: list[str] | None = None
 
 
 def _latest_summary(session, candidate_id: int) -> ReviewSummary | None:
@@ -58,7 +66,10 @@ def _comments_for(session, candidate_id: int) -> list[CommentRow]:
 
 
 def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
+    from projects.exoplanet.pipelines.vetting import list_available_plots
+
     summary = _latest_summary(session, candidate.id)
+    plots = list_available_plots(candidate.id)
     return CandidateRow(
         id=candidate.id,
         target_slug=target.slug,
@@ -73,6 +84,14 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         summary=summary.summary_text if summary else None,
         summary_source=summary.source if summary else None,
         comments=_comments_for(session, candidate.id),
+        t0=getattr(candidate, "t0", None),
+        duration_hours=getattr(candidate, "duration_hours", None),
+        odd_depth_ppm=getattr(candidate, "odd_depth_ppm", None),
+        even_depth_ppm=getattr(candidate, "even_depth_ppm", None),
+        odd_even_delta_ppm=getattr(candidate, "odd_even_delta_ppm", None),
+        geometry_note=getattr(candidate, "geometry_note", None),
+        plots_ready=bool(getattr(candidate, "plots_ready", False) or plots),
+        available_plots=plots,
     )
 
 

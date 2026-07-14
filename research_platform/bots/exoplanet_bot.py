@@ -113,6 +113,12 @@ def _format_analyze(result: dict[str, Any]) -> str:
     ]
     if result.get("candidate_id") is not None:
         lines.append(f"  Candidate #{result['candidate_id']} (pending review)")
+        if result.get("plots_ready"):
+            lines.append("  Vetting plots ready (see /review)")
+        elif result.get("geometry_note"):
+            lines.append(f"  Geometry: {result.get('geometry_note')}")
+        if result.get("t0") is not None:
+            lines.append(f"  t0≈{float(result['t0']):.4f}")
     reason = result.get("flag_reason")
     if reason:
         lines.append(f"  {reason}")

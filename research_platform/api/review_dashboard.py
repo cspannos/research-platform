@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
 from projects.exoplanet.pipelines.enrich import enrich_candidate_summary
+from projects.exoplanet.pipelines.vetting import PLOT_NAMES, resolve_plot_file
 from projects.exoplanet.review.queries import (
     add_review_comment,
     get_candidate_row,
@@ -78,6 +79,22 @@ def review_candidate_detail(
         "review/candidate_detail.html",
         {"candidate": row},
     )
+
+
+@router.get("/candidates/{candidate_id}/plots/{plot_name}")
+def review_candidate_plot(
+    candidate_id: int,
+    plot_name: str,
+    _: None = Depends(verify_review_access),
+) -> FileResponse:
+    if plot_name not in PLOT_NAMES:
+        raise HTTPException(status_code=404, detail="unknown plot")
+    if get_candidate_row(candidate_id) is None:
+        raise HTTPException(status_code=404, detail="candidate not found")
+    path = resolve_plot_file(candidate_id, plot_name)
+    if path is None:
+        raise HTTPException(status_code=404, detail="plot unavailable")
+    return FileResponse(path, media_type="image/png", filename=plot_name)
 
 
 @router.post("/candidates/{candidate_id}/status", response_class=HTMLResponse)

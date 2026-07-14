@@ -10,6 +10,7 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
@@ -62,6 +63,14 @@ class Candidate(Base):
     snr: Mapped[float] = mapped_column(Float, default=0.0)
     flag_reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    # Phase A transit geometry (nullable when LC cache / fold fails)
+    t0: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    duration_hours: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    odd_depth_ppm: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    even_depth_ppm: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    odd_even_delta_ppm: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    geometry_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    plots_ready: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -122,9 +131,30 @@ def get_session_factory():
     return _SessionLocal
 
 
+# Columns added after initial deploy; create_all will not ALTER existing tables.
+_CANDIDATE_VETTING_COLUMNS = (
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS t0 DOUBLE PRECISION",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS duration_hours DOUBLE PRECISION",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_depth_ppm DOUBLE PRECISION",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS even_depth_ppm DOUBLE PRECISION",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_even_delta_ppm DOUBLE PRECISION",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS geometry_note TEXT",
+    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS plots_ready BOOLEAN DEFAULT FALSE",
+)
+
+
+def ensure_vetting_schema(engine=None) -> None:
+    """Apply Phase A nullable columns on existing Postgres DBs (idempotent)."""
+    eng = engine or get_engine()
+    with eng.begin() as conn:
+        for stmt in _CANDIDATE_VETTING_COLUMNS:
+            conn.execute(text(stmt))
+
+
 def init_db() -> None:
     engine = get_engine()
     Base.metadata.create_all(engine)
+    ensure_vetting_schema(engine)
 
 
 def get_db_session():

@@ -142,6 +142,13 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-haiku-4.5}
       EXOPLANET_LLM_SUMMARIES: ${EXOPLANET_LLM_SUMMARIES:-false}
+      EXOPLANET_CACHE_DIR: /var/cache/platform/exoplanet
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./projects:/app/projects:ro
+      - platform_logs:/var/log/platform
+      # Shared with worker-exoplanet so /review can serve vetting PNGs
+      - ./data/exoplanet/cache:/var/cache/platform/exoplanet:ro
     depends_on:
       postgres:
         condition: service_healthy

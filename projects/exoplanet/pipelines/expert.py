@@ -84,7 +84,26 @@ def chat_exoplanet_expert(
         return None, "unavailable"
 
 
+def _as_float(value: object) -> float | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _fmt_opt(value: object, fmt: str) -> str:
+    number = _as_float(value)
+    if number is None:
+        return "unavailable"
+    return format(number, fmt)
+
+
 def _candidate_context(candidate: Candidate, target: Target) -> str:
+    note_raw = getattr(candidate, "geometry_note", None)
+    geometry_note = note_raw if isinstance(note_raw, str) and note_raw else "n/a"
+    plots_ready = getattr(candidate, "plots_ready", False)
+    plots = "yes" if plots_ready is True else "no"
     return (
         f"Target: {target.name} (slug={target.slug}, mission={target.mission}, "
         f"external_id={target.external_id})\n"
@@ -93,6 +112,13 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         f"Period (days): {candidate.period_days:.4f}\n"
         f"Transit depth (ppm): {candidate.depth_ppm:.1f}\n"
         f"SNR: {candidate.snr:.2f}\n"
+        f"Epoch t0: {_fmt_opt(getattr(candidate, 't0', None), '.6f')}\n"
+        f"Duration (hours): {_fmt_opt(getattr(candidate, 'duration_hours', None), '.3f')}\n"
+        f"Odd depth (ppm): {_fmt_opt(getattr(candidate, 'odd_depth_ppm', None), '.1f')}\n"
+        f"Even depth (ppm): {_fmt_opt(getattr(candidate, 'even_depth_ppm', None), '.1f')}\n"
+        f"Odd-even delta (ppm): {_fmt_opt(getattr(candidate, 'odd_even_delta_ppm', None), '.1f')}\n"
+        f"Geometry note: {geometry_note}\n"
+        f"Vetting plots ready: {plots}\n"
         f"Status: {candidate.status}\n"
         f"Detection note: {candidate.flag_reason}"
     )
@@ -109,10 +135,22 @@ def build_review_summary_prompt(candidate: Candidate, target: Target) -> str:
 
 
 def template_review_summary(candidate: Candidate, target: Target) -> str:
+    geom = ""
+    t0 = _as_float(getattr(candidate, "t0", None))
+    if t0 is not None:
+        odd = _as_float(getattr(candidate, "odd_depth_ppm", None))
+        even = _as_float(getattr(candidate, "even_depth_ppm", None))
+        dur = _as_float(getattr(candidate, "duration_hours", None))
+        geom = f" Epoch t0≈{t0:.4f}"
+        if dur is not None:
+            geom += f", duration≈{dur:.2f} h"
+        if odd is not None and even is not None:
+            geom += f", odd/even depths {odd:.0f}/{even:.0f} ppm"
+        geom += "."
     return (
         f"{target.name} ({target.mission}) shows a periodic signal at "
         f"{candidate.period_days:.3f} d (SNR {candidate.snr:.1f}). "
-        f"{candidate.flag_reason} "
+        f"{candidate.flag_reason}.{geom} "
         "Follow up with vetting plots, neighbor checks, and archive metadata."
     )
 

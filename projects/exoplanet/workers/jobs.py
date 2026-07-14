@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import os
 
-from projects.exoplanet.pipelines.analysis import analyze_target_slug, scan_all_cached_targets
+from projects.exoplanet.pipelines.analysis import (
+    analyze_target_slug,
+    scan_all_cached_targets,
+    vet_candidate,
+)
 from projects.exoplanet.pipelines.ingest import ingest_all_targets, ingest_target
 from projects.exoplanet.pipelines.summaries import format_telegram_digest, generate_summaries_for_pending
 from projects.exoplanet.settings import load_targets
@@ -21,6 +25,11 @@ def exoplanet_scan_job() -> dict[str, object]:
 
 def exoplanet_analyze_target_job(slug: str) -> dict[str, object]:
     return analyze_target_slug(slug)
+
+
+def exoplanet_vet_candidate_job(candidate_id: int) -> dict[str, object]:
+    """Regenerate Phase A geometry + diagnostic plots for one candidate."""
+    return vet_candidate(candidate_id)
 
 
 def exoplanet_review_summary_job() -> dict[str, object]:

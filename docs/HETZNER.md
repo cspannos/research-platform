@@ -178,6 +178,43 @@ ssh -L 8001:127.0.0.1:8001 validator@168.119.88.189
 
 ---
 
+## Exoplanet Phase A schema (vetting columns)
+
+`create_all` alone does **not** add columns to an existing `candidates` table. After pulling Phase A code:
+
+```bash
+cd ~/research-platform
+git pull
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml build platform-api worker-exoplanet bot-exoplanet
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml up -d platform-api
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml --profile exoplanet up -d worker-exoplanet bot-exoplanet
+```
+
+Schema is applied automatically on the next `init_db()` call (API/worker start that touches the DB), via idempotent:
+
+`ALTER TABLE candidates ADD COLUMN IF NOT EXISTS …`
+
+Manual equivalent (optional):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml exec -T postgres \
+  psql -U "$POSTGRES_USER" -d tenant_exoplanet <<'SQL'
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS t0 DOUBLE PRECISION;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS duration_hours DOUBLE PRECISION;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_depth_ppm DOUBLE PRECISION;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS even_depth_ppm DOUBLE PRECISION;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_even_delta_ppm DOUBLE PRECISION;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS geometry_note TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS plots_ready BOOLEAN DEFAULT FALSE;
+SQL
+```
+
+Vetting PNGs live under `data/exoplanet/cache/vetting/{candidate_id}/` (mounted read-only on `platform-api`). Re-analyze a target or enqueue `exoplanet_vet_candidate_job` to backfill geometry/plots for candidates created before Phase A.
+
+Smoke: `/ingest` → `/analyze <slug>` → open `/review` detail; expect phase-fold + periodogram images and t0/odd-even meta.
+
+---
+
 ## Resource headroom
 
 | | Used | Available | Platform budget |
