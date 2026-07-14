@@ -143,6 +143,7 @@ services:
       EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-haiku-4.5}
       EXOPLANET_LLM_SUMMARIES: ${EXOPLANET_LLM_SUMMARIES:-false}
       EXOPLANET_CACHE_DIR: /var/cache/platform/exoplanet
+      MPLCONFIGDIR: /tmp/matplotlib
     volumes:
       - ./configs:/app/configs:ro
       - ./projects:/app/projects:ro

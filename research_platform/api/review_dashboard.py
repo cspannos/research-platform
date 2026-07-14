@@ -7,8 +7,8 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import Response
 
+from projects.exoplanet.pipelines.cache_manager import VETTING_PLOT_NAMES, resolve_plot_file
 from projects.exoplanet.pipelines.enrich import enrich_candidate_summary
-from projects.exoplanet.pipelines.vetting import PLOT_NAMES, resolve_plot_file
 from projects.exoplanet.review.queries import (
     add_review_comment,
     get_candidate_row,
@@ -87,7 +87,7 @@ def review_candidate_plot(
     plot_name: str,
     _: None = Depends(verify_review_access),
 ) -> FileResponse:
-    if plot_name not in PLOT_NAMES:
+    if plot_name not in VETTING_PLOT_NAMES:
         raise HTTPException(status_code=404, detail="unknown plot")
     if get_candidate_row(candidate_id) is None:
         raise HTTPException(status_code=404, detail="candidate not found")

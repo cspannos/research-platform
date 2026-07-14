@@ -58,12 +58,15 @@ def target_cache_path(slug: str) -> Path:
     return ensure_cache_dir() / f"{slug}.npz"
 
 
+VETTING_PLOT_NAMES = ("phase_fold.png", "odd_even.png", "periodogram.png")
+
+
 def vetting_dir(candidate_id: int, *, create: bool = False) -> Path:
     """Directory for diagnostic PNGs: {cache}/vetting/{candidate_id}/.
 
     create=False for read paths (platform-api mounts cache read-only).
     """
-    path = ensure_cache_dir() / "vetting" / str(candidate_id)
+    path = ensure_cache_dir(create=create) / "vetting" / str(candidate_id)
     if create:
         path.mkdir(parents=True, exist_ok=True)
     return path
@@ -71,3 +74,17 @@ def vetting_dir(candidate_id: int, *, create: bool = False) -> Path:
 
 def vetting_plot_path(candidate_id: int, plot_name: str, *, create: bool = False) -> Path:
     return vetting_dir(candidate_id, create=create) / plot_name
+
+
+def list_available_plots(candidate_id: int) -> list[str]:
+    root = vetting_dir(candidate_id, create=False)
+    if not root.is_dir():
+        return []
+    return [name for name in VETTING_PLOT_NAMES if (root / name).is_file()]
+
+
+def resolve_plot_file(candidate_id: int, plot_name: str) -> Path | None:
+    if plot_name not in VETTING_PLOT_NAMES:
+        return None
+    path = vetting_plot_path(candidate_id, plot_name, create=False)
+    return path if path.is_file() else None

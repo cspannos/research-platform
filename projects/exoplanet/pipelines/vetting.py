@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import matplotlib
 
@@ -13,16 +12,29 @@ import numpy as np
 from scipy.signal import lombscargle
 
 from projects.exoplanet.pipelines.cache_manager import (
+    VETTING_PLOT_NAMES,
+    list_available_plots,
+    resolve_plot_file,
     target_cache_path,
     vetting_dir,
-    vetting_plot_path,
 )
 from research_platform.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-PLOT_NAMES = ("phase_fold.png", "odd_even.png", "periodogram.png")
+# Back-compat aliases for API/tests
+PLOT_NAMES = VETTING_PLOT_NAMES
 _MAX_PLOT_POINTS = 8000
+
+__all__ = [
+    "PLOT_NAMES",
+    "TransitGeometry",
+    "estimate_transit_geometry",
+    "generate_vetting_plots",
+    "list_available_plots",
+    "load_cached_lc",
+    "resolve_plot_file",
+]
 
 
 @dataclass(frozen=True)
@@ -271,27 +283,9 @@ def generate_vetting_plots(
     return {"ok": len(written) >= 2, "plots": written, "reason": None}
 
 
-def list_available_plots(candidate_id: int) -> list[str]:
-    root = vetting_dir(candidate_id, create=False)
-    if not root.is_dir():
-        return []
-    available = []
-    for name in PLOT_NAMES:
-        if (root / name).is_file():
-            available.append(name)
-    return available
-
-
 def load_cached_lc(slug: str) -> tuple[np.ndarray, np.ndarray] | None:
     path = target_cache_path(slug)
     if not path.exists():
         return None
     data = np.load(path)
     return data["time"], data["flux"]
-
-
-def resolve_plot_file(candidate_id: int, plot_name: str) -> Path | None:
-    if plot_name not in PLOT_NAMES:
-        return None
-    path = vetting_plot_path(candidate_id, plot_name)
-    return path if path.is_file() else None

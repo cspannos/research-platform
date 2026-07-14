@@ -66,7 +66,7 @@ def _comments_for(session, candidate_id: int) -> list[CommentRow]:
 
 
 def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
-    from projects.exoplanet.pipelines.vetting import list_available_plots
+    from projects.exoplanet.pipelines.cache_manager import list_available_plots
 
     summary = _latest_summary(session, candidate.id)
     plots = list_available_plots(candidate.id)
