@@ -132,29 +132,53 @@ def get_session_factory():
 
 
 # Columns added after initial deploy; create_all will not ALTER existing tables.
-_CANDIDATE_VETTING_COLUMNS = (
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS t0 DOUBLE PRECISION",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS duration_hours DOUBLE PRECISION",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_depth_ppm DOUBLE PRECISION",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS even_depth_ppm DOUBLE PRECISION",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS odd_even_delta_ppm DOUBLE PRECISION",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS geometry_note TEXT",
-    "ALTER TABLE candidates ADD COLUMN IF NOT EXISTS plots_ready BOOLEAN DEFAULT FALSE",
+_CANDIDATE_VETTING_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("t0", "DOUBLE PRECISION"),
+    ("duration_hours", "DOUBLE PRECISION"),
+    ("odd_depth_ppm", "DOUBLE PRECISION"),
+    ("even_depth_ppm", "DOUBLE PRECISION"),
+    ("odd_even_delta_ppm", "DOUBLE PRECISION"),
+    ("geometry_note", "TEXT"),
+    ("plots_ready", "BOOLEAN DEFAULT FALSE"),
 )
+
+_schema_ready = False
 
 
 def ensure_vetting_schema(engine=None) -> None:
-    """Apply Phase A nullable columns on existing Postgres DBs (idempotent)."""
+    """Apply missing Phase A columns only (no-op when already present).
+
+    Important: do not run unconditional ALTER on every request — Postgres still
+    takes relation locks for ADD COLUMN IF NOT EXISTS and can stall the pool.
+    """
     eng = engine or get_engine()
     with eng.begin() as conn:
-        for stmt in _CANDIDATE_VETTING_COLUMNS:
-            conn.execute(text(stmt))
+        existing = {
+            row[0]
+            for row in conn.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'public' AND table_name = 'candidates'"
+                )
+            )
+        }
+        if not existing:
+            return
+        for column, ddl_type in _CANDIDATE_VETTING_COLUMNS:
+            if column in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE candidates ADD COLUMN {column} {ddl_type}"))
 
 
 def init_db() -> None:
+    """Create tables / migrate once per process."""
+    global _schema_ready
+    if _schema_ready:
+        return
     engine = get_engine()
     Base.metadata.create_all(engine)
     ensure_vetting_schema(engine)
+    _schema_ready = True
 
 
 def get_db_session():
