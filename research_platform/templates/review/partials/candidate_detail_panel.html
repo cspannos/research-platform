@@ -42,13 +42,26 @@
 
   <h3 style="margin-top:1rem;">Vetting plots</h3>
   {% if candidate.available_plots %}
+  <p class="meta">Tap a plot to enlarge.</p>
   <div class="plot-grid">
     {% for plot in candidate.available_plots %}
+    {% set plot_label = plot.replace('_', ' ').replace('.png', '') %}
+    {% set plot_src = "/review/candidates/" ~ candidate.id ~ "/plots/" ~ plot ~ "?token=" ~ request.query_params.get('token', '') %}
     <figure class="plot">
-      <img src="/review/candidates/{{ candidate.id }}/plots/{{ plot }}?token={{ request.query_params.get('token', '') }}"
-           alt="{{ plot }}"
-           loading="lazy">
-      <figcaption class="meta">{{ plot.replace('_', ' ').replace('.png', '') }}</figcaption>
+      <button type="button"
+              class="plot-zoom"
+              data-full-src="{{ plot_src }}"
+              data-alt="{{ plot_label }}"
+              data-caption="{{ plot_label }}"
+              aria-label="Enlarge {{ plot_label }} plot">
+        <img src="{{ plot_src }}"
+             alt="{{ plot_label }}"
+             loading="lazy">
+      </button>
+      <figcaption class="meta">
+        {{ plot_label }}
+        <span class="plot-hint">tap to enlarge</span>
+      </figcaption>
     </figure>
     {% endfor %}
   </div>
