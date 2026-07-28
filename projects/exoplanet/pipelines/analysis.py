@@ -9,6 +9,7 @@ from scipy.signal import lombscargle
 from projects.exoplanet.db.models import Candidate, Target, get_db_session, init_db
 from projects.exoplanet.pipelines.cache_manager import target_cache_path
 from projects.exoplanet.pipelines.vetting import (
+    estimate_baseline_depth_ppm,
     estimate_transit_geometry,
     generate_vetting_plots,
     list_available_plots,
@@ -44,11 +45,13 @@ def _detrend(flux: np.ndarray) -> np.ndarray:
 
 
 def analyze_lightcurve(time: np.ndarray, flux: np.ndarray) -> AnalysisResult:
+    """Period search on detrended flux; depth from continuum-normalized fold."""
     settings = get_exoplanet_settings()
-    detrended = _detrend(flux)
-    dt = np.median(np.diff(time)) if len(time) > 1 else 1.0
-    if dt <= 0:
-        dt = 1.0
+    continuum = float(np.median(flux))
+    if not np.isfinite(continuum) or continuum == 0:
+        continuum = 1.0
+    normalized = flux / continuum
+    detrended = _detrend(normalized)
 
     min_f = 1.0 / settings.max_period_days
     max_f = 1.0 / settings.min_period_days
@@ -58,20 +61,27 @@ def analyze_lightcurve(time: np.ndarray, flux: np.ndarray) -> AnalysisResult:
     peak_power = float(power[peak_idx])
     period_days = float(1.0 / freqs[peak_idx])
 
-    depth = float((1.0 - np.min(detrended)) * 1e6)
+    depth = estimate_baseline_depth_ppm(time, flux, period_days)
+    if depth is None:
+        # Last-resort: in-transit vs continuum on normalized series (still baseline-relative).
+        depth = float(max(0.0, (1.0 - float(np.min(normalized))) * 1e6))
     noise = float(np.std(detrended)) or 1e-9
     snr = float(peak_power / noise)
 
-    is_interesting = snr >= settings.snr_threshold and settings.min_period_days <= period_days <= settings.max_period_days
+    is_interesting = (
+        snr >= settings.snr_threshold
+        and settings.min_period_days <= period_days <= settings.max_period_days
+    )
     reason = (
-        f"Lomb-Scargle peak period={period_days:.3f}d, SNR={snr:.2f}, depth~{depth:.0f}ppm"
+        f"Lomb-Scargle peak period={period_days:.3f}d, SNR={snr:.2f}, "
+        f"depth={depth:.0f}ppm (baseline-normalized)"
         if is_interesting
         else f"No strong periodic signal (SNR={snr:.2f})"
     )
 
     return AnalysisResult(
         period_days=period_days,
-        depth_ppm=depth,
+        depth_ppm=float(depth),
         snr=snr,
         flag_reason=reason,
         is_interesting=is_interesting,
@@ -93,6 +103,8 @@ def _apply_geometry_and_plots(
     candidate.even_depth_ppm = geometry.even_depth_ppm
     candidate.odd_even_delta_ppm = geometry.odd_even_delta_ppm
     candidate.geometry_note = geometry.note
+    if geometry.depth_ppm is not None:
+        candidate.depth_ppm = float(geometry.depth_ppm)
 
     plot_result = generate_vetting_plots(
         candidate.id,
@@ -118,6 +130,7 @@ def _apply_geometry_and_plots(
         "even_depth_ppm": candidate.even_depth_ppm,
         "odd_even_delta_ppm": candidate.odd_even_delta_ppm,
         "geometry_note": candidate.geometry_note,
+        "depth_ppm": candidate.depth_ppm,
         "plots_ready": candidate.plots_ready,
         "plots": list_available_plots(candidate.id),
         "slug": slug,
@@ -159,6 +172,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             interesting=result.is_interesting,
             period_days=result.period_days,
             snr=result.snr,
+            depth_ppm=result.depth_ppm,
             candidate_id=candidate_id,
             plots_ready=vetting.get("plots_ready"),
         )
@@ -167,7 +181,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             "interesting": result.is_interesting,
             "candidate_id": candidate_id,
             "period_days": result.period_days,
-            "depth_ppm": result.depth_ppm,
+            "depth_ppm": vetting.get("depth_ppm", result.depth_ppm),
             "snr": result.snr,
             "flag_reason": result.flag_reason,
         }
@@ -179,7 +193,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
 
 def vet_candidate(candidate_id: int) -> dict[str, object]:
     """
-    Recompute geometry + diagnostic plots for an existing candidate.
+    Recompute geometry + diagnostic plots (+ refreshed depth) for an existing candidate.
 
     Idempotent; used when LC cache appears after detection or to refresh Phase A artifacts.
     """

@@ -14,9 +14,30 @@
   <p class="meta" style="margin-top:0.75rem;">
     Period {{ "%.4f"|format(candidate.period_days) }} days ·
     SNR {{ "%.2f"|format(candidate.snr) }} ·
-    Depth ~{{ "%.0f"|format(candidate.depth_ppm) }} ppm
+    Depth {{ "%.0f"|format(candidate.depth_ppm) }} ppm
+    <span class="meta">(baseline-normalized)</span>
   </p>
   <p class="meta">Flagged: {{ candidate.flag_reason }}</p>
+
+  <h3 style="margin-top:1rem;">Vetting checklist</h3>
+  {% if candidate.checklist_next_action %}
+  <div class="checklist-next">Next: {{ candidate.checklist_next_action }}</div>
+  {% endif %}
+  {% if candidate.checklist %}
+  <ul class="checklist">
+    {% for item in candidate.checklist %}
+    <li class="checklist-item {{ item.status }}">
+      <div class="checklist-head">
+        <span class="badge checklist-{{ item.status }}">{{ item.status }}</span>
+        <strong>{{ item.label }}</strong>
+      </div>
+      <p class="meta">{{ item.detail }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="meta">Checklist unavailable.</p>
+  {% endif %}
 
   <h3 style="margin-top:1rem;">Transit geometry</h3>
   {% if candidate.t0 is not none %}

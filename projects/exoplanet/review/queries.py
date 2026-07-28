@@ -22,6 +22,15 @@ class CommentRow:
 
 
 @dataclass
+class ChecklistItemRow:
+    id: str
+    label: str
+    status: str
+    detail: str
+    next_action: str
+
+
+@dataclass
 class CandidateRow:
     id: int
     target_slug: str
@@ -44,6 +53,8 @@ class CandidateRow:
     geometry_note: str | None = None
     plots_ready: bool = False
     available_plots: list[str] | None = None
+    checklist: list[ChecklistItemRow] | None = None
+    checklist_next_action: str | None = None
 
 
 def _latest_summary(session, candidate_id: int) -> ReviewSummary | None:
@@ -67,9 +78,28 @@ def _comments_for(session, candidate_id: int) -> list[CommentRow]:
 
 def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
     from projects.exoplanet.pipelines.cache_manager import list_available_plots
+    from projects.exoplanet.pipelines.checklist import (
+        checklist_blocking_action,
+        checklist_from_candidate_like,
+    )
 
     summary = _latest_summary(session, candidate.id)
     plots = list_available_plots(candidate.id)
+    plots_ready = bool(getattr(candidate, "plots_ready", False) or plots)
+    # Temporary attrs for checklist helper
+    candidate.available_plots = plots  # type: ignore[attr-defined]
+    candidate.plots_ready = plots_ready
+    items = checklist_from_candidate_like(candidate, available_plots=plots)
+    checklist_rows = [
+        ChecklistItemRow(
+            id=i.id,
+            label=i.label,
+            status=i.status,
+            detail=i.detail,
+            next_action=i.next_action,
+        )
+        for i in items
+    ]
     return CandidateRow(
         id=candidate.id,
         target_slug=target.slug,
@@ -90,8 +120,10 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         even_depth_ppm=getattr(candidate, "even_depth_ppm", None),
         odd_even_delta_ppm=getattr(candidate, "odd_even_delta_ppm", None),
         geometry_note=getattr(candidate, "geometry_note", None),
-        plots_ready=bool(getattr(candidate, "plots_ready", False) or plots),
+        plots_ready=plots_ready,
         available_plots=plots,
+        checklist=checklist_rows,
+        checklist_next_action=checklist_blocking_action(items),
     )
 
 

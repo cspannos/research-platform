@@ -24,3 +24,7 @@ def test_analyze_detects_periodic_signal() -> None:
     result = analyze_lightcurve(curve.time, curve.flux)
     assert result.period_days > 0
     assert result.snr > 0
+    # Must be continuum-normalized (not residual min→1e6 nonsense)
+    assert result.depth_ppm > 0
+    assert result.depth_ppm < 100_000
+    assert "baseline-normalized" in result.flag_reason

@@ -23,6 +23,14 @@ class CommentOut(BaseModel):
     created_at: str
 
 
+class ChecklistItemOut(BaseModel):
+    id: str
+    label: str
+    status: str
+    detail: str
+    next_action: str
+
+
 class CandidateOut(BaseModel):
     id: int
     target_slug: str
@@ -45,6 +53,8 @@ class CandidateOut(BaseModel):
     geometry_note: str | None = None
     plots_ready: bool = False
     available_plots: list[str] = Field(default_factory=list)
+    checklist: list[ChecklistItemOut] = Field(default_factory=list)
+    checklist_next_action: str | None = None
 
 
 class CandidateStatusUpdate(BaseModel):
@@ -87,6 +97,17 @@ def _serialize(row) -> CandidateOut:
         geometry_note=row.geometry_note,
         plots_ready=row.plots_ready,
         available_plots=list(row.available_plots or []),
+        checklist=[
+            ChecklistItemOut(
+                id=i.id,
+                label=i.label,
+                status=i.status,
+                detail=i.detail,
+                next_action=i.next_action,
+            )
+            for i in (row.checklist or [])
+        ],
+        checklist_next_action=row.checklist_next_action,
     )
 
 

@@ -29,6 +29,7 @@ _MAX_PLOT_POINTS = 8000
 __all__ = [
     "PLOT_NAMES",
     "TransitGeometry",
+    "estimate_baseline_depth_ppm",
     "estimate_transit_geometry",
     "generate_vetting_plots",
     "list_available_plots",
@@ -45,10 +46,52 @@ class TransitGeometry:
     even_depth_ppm: float | None
     odd_even_delta_ppm: float | None
     note: str
+    # Continuum-normalized transit depth: (F_out - F_in) / F_out × 1e6
+    depth_ppm: float | None = None
 
     @property
     def ok(self) -> bool:
         return self.t0 is not None and "unavailable" not in self.note.lower()
+
+
+def estimate_baseline_depth_ppm(
+    time: np.ndarray,
+    flux: np.ndarray,
+    period_days: float,
+    *,
+    t0: float | None = None,
+) -> float | None:
+    """
+    Baseline-normalized transit depth in ppm.
+
+    Uses out-of-transit median as continuum and in-transit mean near phase 0.
+    Returns None when the fold cannot be formed.
+    """
+    if len(time) < 20 or period_days <= 0 or not np.isfinite(period_days):
+        return None
+
+    continuum = float(np.median(flux))
+    if not np.isfinite(continuum) or continuum == 0:
+        return None
+
+    if t0 is None or not np.isfinite(t0):
+        order = np.argsort(flux)[: max(5, len(flux) // 50)]
+        t0 = float(np.median(time[order]))
+
+    phase = _phase_fold(time, period_days, float(t0))
+    in_transit = np.abs(phase) < 0.05
+    out_transit = np.abs(phase) > 0.15
+    if not np.any(in_transit) or not np.any(out_transit):
+        return None
+
+    f_out = float(np.median(flux[out_transit]))
+    f_in = float(np.mean(flux[in_transit]))
+    if not np.isfinite(f_out) or f_out == 0:
+        f_out = continuum
+    depth = (f_out - f_in) / abs(f_out) * 1e6
+    if not np.isfinite(depth):
+        return None
+    return float(depth)
 
 
 def _downsample(time: np.ndarray, flux: np.ndarray, max_points: int = _MAX_PLOT_POINTS):
@@ -169,6 +212,10 @@ def estimate_transit_geometry(
     else:
         note = "ok"
 
+    depth_ppm = estimate_baseline_depth_ppm(time, flux, period_days, t0=t0)
+    if depth_ppm is None and odd_depth is not None and even_depth is not None:
+        depth_ppm = float(0.5 * (odd_depth + even_depth))
+
     return TransitGeometry(
         t0=float(t0),
         duration_hours=duration_hours,
@@ -176,6 +223,7 @@ def estimate_transit_geometry(
         even_depth_ppm=even_depth,
         odd_even_delta_ppm=delta,
         note=note,
+        depth_ppm=depth_ppm,
     )
 
 

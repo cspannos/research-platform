@@ -100,17 +100,23 @@ def _fmt_opt(value: object, fmt: str) -> str:
 
 
 def _candidate_context(candidate: Candidate, target: Target) -> str:
+    from projects.exoplanet.pipelines.checklist import (
+        checklist_from_candidate_like,
+        format_checklist_for_prompt,
+    )
+
     note_raw = getattr(candidate, "geometry_note", None)
     geometry_note = note_raw if isinstance(note_raw, str) and note_raw else "n/a"
     plots_ready = getattr(candidate, "plots_ready", False)
     plots = "yes" if plots_ready is True else "no"
+    checklist = format_checklist_for_prompt(checklist_from_candidate_like(candidate))
     return (
         f"Target: {target.name} (slug={target.slug}, mission={target.mission}, "
         f"external_id={target.external_id})\n"
         f"Notes: {target.notes or 'n/a'}\n"
         f"Candidate #{candidate.id}\n"
         f"Period (days): {candidate.period_days:.4f}\n"
-        f"Transit depth (ppm): {candidate.depth_ppm:.1f}\n"
+        f"Transit depth (ppm, baseline-normalized): {candidate.depth_ppm:.1f}\n"
         f"SNR: {candidate.snr:.2f}\n"
         f"Epoch t0: {_fmt_opt(getattr(candidate, 't0', None), '.6f')}\n"
         f"Duration (hours): {_fmt_opt(getattr(candidate, 'duration_hours', None), '.3f')}\n"
@@ -119,6 +125,7 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         f"Odd-even delta (ppm): {_fmt_opt(getattr(candidate, 'odd_even_delta_ppm', None), '.1f')}\n"
         f"Geometry note: {geometry_note}\n"
         f"Vetting plots ready: {plots}\n"
+        f"{checklist}\n"
         f"Status: {candidate.status}\n"
         f"Detection note: {candidate.flag_reason}"
     )
@@ -135,6 +142,11 @@ def build_review_summary_prompt(candidate: Candidate, target: Target) -> str:
 
 
 def template_review_summary(candidate: Candidate, target: Target) -> str:
+    from projects.exoplanet.pipelines.checklist import (
+        checklist_blocking_action,
+        checklist_from_candidate_like,
+    )
+
     geom = ""
     t0 = _as_float(getattr(candidate, "t0", None))
     if t0 is not None:
@@ -147,11 +159,19 @@ def template_review_summary(candidate: Candidate, target: Target) -> str:
         if odd is not None and even is not None:
             geom += f", odd/even depths {odd:.0f}/{even:.0f} ppm"
         geom += "."
+    items = checklist_from_candidate_like(candidate)
+    fails = [i for i in items if i.status == "fail"]
+    next_action = checklist_blocking_action(items)
+    flags = ""
+    if fails:
+        flags = " Checklist fails: " + "; ".join(f"{i.label} ({i.status})" for i in fails) + "."
+    if next_action:
+        flags += f" Next: {next_action}"
     return (
         f"{target.name} ({target.mission}) shows a periodic signal at "
-        f"{candidate.period_days:.3f} d (SNR {candidate.snr:.1f}). "
-        f"{candidate.flag_reason}.{geom} "
-        "Follow up with vetting plots, neighbor checks, and archive metadata."
+        f"{candidate.period_days:.3f} d (SNR {candidate.snr:.1f}, "
+        f"depth {candidate.depth_ppm:.0f} ppm baseline-normalized). "
+        f"{candidate.flag_reason}.{geom}{flags}"
     )
 
 
