@@ -41,7 +41,7 @@ x-resource-worker: &resource-worker
 
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.6.1
     command:
       - --configFile=/etc/traefik/traefik.yml
     ports:

@@ -39,7 +39,11 @@ def check_bot() -> None:
 
 
 def check_scheduler() -> None:
-    check_redis()
+    # Scheduler is platform-wide (TENANT_ID=platform); ping shared Redis only.
+    settings = get_settings()
+    client = redis.from_url(settings.redis_url)
+    if not client.ping():
+        raise RuntimeError("Redis ping failed")
 
 
 CHECKS = {
