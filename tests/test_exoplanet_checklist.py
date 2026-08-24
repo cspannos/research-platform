@@ -52,3 +52,34 @@ def test_checklist_passes_sane_metrics() -> None:
     assert by_id["depth"].status == "pass"
     assert by_id["odd_even"].status == "pass"
     assert by_id["plots"].status == "pass"
+
+
+def test_checklist_neighbours_fail_on_bright_blend() -> None:
+    items = build_vetting_checklist(
+        depth_ppm=2500.0,
+        plots_ready=True,
+        available_plots=["phase_fold.png", "odd_even.png"],
+        neighbours={
+            "status": "ok",
+            "n_neighbours": 4,
+            "brightest_delta_mag": 0.2,
+            "dilution": 0.55,
+            "neighbours": [],
+        },
+        centroid={"status": "fail", "pass": False, "pvalue": 0.001, "offset_pix": 0.4},
+    )
+    by_id = {i.id: i for i in items}
+    assert by_id["neighbours"].status == "fail"
+    assert by_id["centroid"].status == "fail"
+
+
+def test_checklist_centroid_synthetic_unavailable() -> None:
+    items = build_vetting_checklist(
+        depth_ppm=2500.0,
+        neighbours={"status": "ok", "n_neighbours": 0, "dilution": 1.0, "brightest_delta_mag": None},
+        centroid={"status": "unavailable", "reason": "synthetic_lc", "pass": None},
+    )
+    by_id = {i.id: i for i in items}
+    assert by_id["neighbours"].status == "pass"
+    assert by_id["centroid"].status == "unavailable"
+    assert "synthetic" in by_id["centroid"].detail.lower()

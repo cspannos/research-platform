@@ -31,6 +31,10 @@ class Target(Base):
     external_id: Mapped[str] = mapped_column(String(64))
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(default=True)
+    # Phase B sky position + cached Gaia cone (shared across candidates)
+    ra: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    dec: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    neighbours_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -71,6 +75,9 @@ class Candidate(Base):
     odd_even_delta_ppm: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
     geometry_note: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     plots_ready: Mapped[bool] = mapped_column(default=False)
+    # Phase B neighbour / centroid snapshots (JSON text)
+    neighbours_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    centroid_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -140,34 +147,51 @@ _CANDIDATE_VETTING_COLUMNS: tuple[tuple[str, str], ...] = (
     ("odd_even_delta_ppm", "DOUBLE PRECISION"),
     ("geometry_note", "TEXT"),
     ("plots_ready", "BOOLEAN DEFAULT FALSE"),
+    ("neighbours_json", "TEXT"),
+    ("centroid_json", "TEXT"),
+)
+
+_TARGET_VETTING_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("ra", "DOUBLE PRECISION"),
+    ("dec", "DOUBLE PRECISION"),
+    ("neighbours_json", "TEXT"),
 )
 
 _schema_ready = False
 
 
+def _existing_columns(conn, table: str) -> set[str]:
+    return {
+        row[0]
+        for row in conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = :table_name"
+            ),
+            {"table_name": table},
+        )
+    }
+
+
 def ensure_vetting_schema(engine=None) -> None:
-    """Apply missing Phase A columns only (no-op when already present).
+    """Apply missing Phase A/B columns only (no-op when already present).
 
     Important: do not run unconditional ALTER on every request — Postgres still
     takes relation locks for ADD COLUMN IF NOT EXISTS and can stall the pool.
     """
     eng = engine or get_engine()
     with eng.begin() as conn:
-        existing = {
-            row[0]
-            for row in conn.execute(
-                text(
-                    "SELECT column_name FROM information_schema.columns "
-                    "WHERE table_schema = 'public' AND table_name = 'candidates'"
-                )
-            )
-        }
-        if not existing:
-            return
-        for column, ddl_type in _CANDIDATE_VETTING_COLUMNS:
-            if column in existing:
+        for table, columns in (
+            ("candidates", _CANDIDATE_VETTING_COLUMNS),
+            ("targets", _TARGET_VETTING_COLUMNS),
+        ):
+            existing = _existing_columns(conn, table)
+            if not existing:
                 continue
-            conn.execute(text(f"ALTER TABLE candidates ADD COLUMN {column} {ddl_type}"))
+            for column, ddl_type in columns:
+                if column in existing:
+                    continue
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
 
 
 def init_db() -> None:

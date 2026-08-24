@@ -55,6 +55,8 @@ class CandidateRow:
     available_plots: list[str] | None = None
     checklist: list[ChecklistItemRow] | None = None
     checklist_next_action: str | None = None
+    neighbours: dict | None = None
+    centroid: dict | None = None
 
 
 def _latest_summary(session, candidate_id: int) -> ReviewSummary | None:
@@ -82,13 +84,20 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         checklist_blocking_action,
         checklist_from_candidate_like,
     )
+    from projects.exoplanet.pipelines.neighbours import loads_payload
 
     summary = _latest_summary(session, candidate.id)
     plots = list_available_plots(candidate.id)
     plots_ready = bool(getattr(candidate, "plots_ready", False) or plots)
+    neighbours = loads_payload(getattr(candidate, "neighbours_json", None)) or loads_payload(
+        getattr(target, "neighbours_json", None)
+    )
+    centroid = loads_payload(getattr(candidate, "centroid_json", None))
     # Temporary attrs for checklist helper
     candidate.available_plots = plots  # type: ignore[attr-defined]
     candidate.plots_ready = plots_ready
+    candidate.neighbours = neighbours  # type: ignore[attr-defined]
+    candidate.centroid = centroid  # type: ignore[attr-defined]
     items = checklist_from_candidate_like(candidate, available_plots=plots)
     checklist_rows = [
         ChecklistItemRow(
@@ -124,6 +133,8 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         available_plots=plots,
         checklist=checklist_rows,
         checklist_next_action=checklist_blocking_action(items),
+        neighbours=neighbours,
+        centroid=centroid,
     )
 
 

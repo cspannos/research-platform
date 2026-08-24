@@ -1,15 +1,20 @@
 # Curated targets only — do not bulk-ingest full sectors or archives.
+# ra/dec are optional J2000 degrees; when omitted the worker resolves from TIC/KIC.
 targets:
   - id: toi-715
     name: TOI-715
     mission: TESS
     tic_id: "260128064"
+    ra: 113.85233
+    dec: -73.57742
     notes: "Known habitable-zone candidate; baseline monitoring target."
 
   - id: kepler-442
     name: Kepler-442
     mission: Kepler
     kic_id: "8219268"
+    ra: 285.36658
+    dec: 39.280079
     notes: "Super-Earth host; useful for pipeline validation."
 
   - id: tic-441420236

@@ -8,6 +8,7 @@ from scipy.signal import lombscargle
 
 from projects.exoplanet.db.models import Candidate, Target, get_db_session, init_db
 from projects.exoplanet.pipelines.cache_manager import target_cache_path
+from projects.exoplanet.pipelines.neighbours import apply_neighbour_vetting
 from projects.exoplanet.pipelines.vetting import (
     estimate_baseline_depth_ppm,
     estimate_transit_geometry,
@@ -137,6 +138,18 @@ def _apply_geometry_and_plots(
     }
 
 
+def _apply_phase_b(candidate: Candidate, target: Target) -> dict[str, object]:
+    """Gaia neighbours + optional TPF centroid; never raises to the caller."""
+    try:
+        return apply_neighbour_vetting(candidate, target)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("phase_b_failed", candidate_id=candidate.id, error=str(exc))
+        return {
+            "neighbours": {"status": "unavailable", "reason": str(exc)},
+            "centroid": {"status": "unavailable", "reason": str(exc), "pass": None},
+        }
+
+
 def analyze_target_slug(slug: str) -> dict[str, object]:
     init_db()
     time, flux = _load_cached_curve(slug)
@@ -164,6 +177,7 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             session.flush()
             candidate_id = candidate.id
             vetting = _apply_geometry_and_plots(candidate, slug, time, flux)
+            vetting.update(_apply_phase_b(candidate, target))
             session.commit()
 
         logger.info(
@@ -218,6 +232,7 @@ def vet_candidate(candidate_id: int) -> dict[str, object]:
             candidate.odd_depth_ppm = None
             candidate.even_depth_ppm = None
             candidate.odd_even_delta_ppm = None
+            phase_b = _apply_phase_b(candidate, target)
             session.commit()
             return {
                 "ok": False,
@@ -225,10 +240,12 @@ def vet_candidate(candidate_id: int) -> dict[str, object]:
                 "candidate_id": candidate_id,
                 "geometry_note": candidate.geometry_note,
                 "plots_ready": False,
+                **phase_b,
             }
 
         time, flux = cached
         vetting = _apply_geometry_and_plots(candidate, target.slug, time, flux)
+        vetting.update(_apply_phase_b(candidate, target))
         session.commit()
         return {"ok": True, "candidate_id": candidate_id, **vetting}
     finally:

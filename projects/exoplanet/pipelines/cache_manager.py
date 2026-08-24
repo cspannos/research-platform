@@ -88,3 +88,34 @@ def resolve_plot_file(candidate_id: int, plot_name: str) -> Path | None:
         return None
     path = vetting_plot_path(candidate_id, plot_name, create=False)
     return path if path.is_file() else None
+
+
+def tpf_dir(slug: str, *, create: bool = False) -> Path:
+    """Directory for cached target-pixel files: {cache}/tpf/{slug}/.
+
+    Policy: at most one TPF per target (first sector/quarter won); do not refetch.
+    """
+    path = ensure_cache_dir(create=create) / "tpf" / slug
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def existing_tpf(slug: str) -> Path | None:
+    try:
+        root = tpf_dir(slug, create=False)
+    except OSError:
+        return None
+    if not root.is_dir():
+        return None
+    files = sorted(
+        p for p in root.iterdir() if p.is_file() and p.suffix.lower() in {".fits", ".gz"}
+    )
+    return files[0] if files else None
+
+
+def tpf_cache_path(slug: str, label: str, *, create: bool = True) -> Path:
+    safe = "".join(ch if ch.isalnum() or ch in "-_." else "_" for ch in label) or "unknown"
+    if not safe.endswith(".fits") and not safe.endswith(".fits.gz"):
+        safe = f"{safe}.fits"
+    return tpf_dir(slug, create=create) / safe

@@ -31,6 +31,10 @@ def _upsert_target(session, spec: TargetSpec) -> Target:
         row.name = spec.name
         row.notes = spec.notes
         row.external_id = external_id
+    if spec.ra is not None:
+        row.ra = float(spec.ra)
+    if spec.dec is not None:
+        row.dec = float(spec.dec)
     return row
 
 

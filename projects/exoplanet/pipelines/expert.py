@@ -104,12 +104,54 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         checklist_from_candidate_like,
         format_checklist_for_prompt,
     )
+    from projects.exoplanet.pipelines.neighbours import loads_payload, neighbour_risk_flags
 
     note_raw = getattr(candidate, "geometry_note", None)
     geometry_note = note_raw if isinstance(note_raw, str) and note_raw else "n/a"
     plots_ready = getattr(candidate, "plots_ready", False)
     plots = "yes" if plots_ready is True else "no"
+    neighbours = getattr(candidate, "neighbours", None)
+    if not isinstance(neighbours, dict):
+        neighbours = loads_payload(getattr(candidate, "neighbours_json", None))
+    centroid = getattr(candidate, "centroid", None)
+    if not isinstance(centroid, dict):
+        centroid = loads_payload(getattr(candidate, "centroid_json", None))
     checklist = format_checklist_for_prompt(checklist_from_candidate_like(candidate))
+    neighbour_line = "unavailable"
+    if isinstance(neighbours, dict):
+        if neighbours.get("status") == "ok":
+            n = neighbours.get("n_neighbours")
+            dmag = neighbours.get("brightest_delta_mag")
+            dil = neighbours.get("dilution")
+            bits = [f"count={n if n is not None else 'n/a'}"]
+            if isinstance(dmag, (int, float)):
+                bits.append(f"brightest ΔG={dmag:.2f}")
+            else:
+                bits.append("brightest ΔG=unavailable")
+            if isinstance(dil, (int, float)):
+                bits.append(f"dilution={dil:.2f}")
+            else:
+                bits.append("dilution=unavailable")
+            flags = neighbour_risk_flags(neighbours)
+            neighbour_line = "; ".join(bits)
+            if flags:
+                neighbour_line += f" [{flags}]"
+        else:
+            neighbour_line = f"unavailable ({neighbours.get('reason') or 'n/a'})"
+    centroid_line = "unavailable"
+    if isinstance(centroid, dict):
+        status = centroid.get("status") or "unavailable"
+        reason = centroid.get("reason")
+        pvalue = centroid.get("pvalue")
+        offset = centroid.get("offset_pix")
+        bits = [str(status)]
+        if isinstance(pvalue, (int, float)):
+            bits.append(f"p={pvalue:.3g}")
+        if isinstance(offset, (int, float)):
+            bits.append(f"offset={offset:.3f} px")
+        if reason:
+            bits.append(str(reason))
+        centroid_line = ", ".join(bits)
     return (
         f"Target: {target.name} (slug={target.slug}, mission={target.mission}, "
         f"external_id={target.external_id})\n"
@@ -125,6 +167,8 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         f"Odd-even delta (ppm): {_fmt_opt(getattr(candidate, 'odd_even_delta_ppm', None), '.1f')}\n"
         f"Geometry note: {geometry_note}\n"
         f"Vetting plots ready: {plots}\n"
+        f"Neighbours: {neighbour_line}\n"
+        f"Centroid: {centroid_line}\n"
         f"{checklist}\n"
         f"Status: {candidate.status}\n"
         f"Detection note: {candidate.flag_reason}"
@@ -167,11 +211,27 @@ def template_review_summary(candidate: Candidate, target: Target) -> str:
         flags = " Checklist fails: " + "; ".join(f"{i.label} ({i.status})" for i in fails) + "."
     if next_action:
         flags += f" Next: {next_action}"
+    from projects.exoplanet.pipelines.neighbours import loads_payload, neighbour_risk_flags
+
+    neighbours = getattr(candidate, "neighbours", None)
+    if not isinstance(neighbours, dict):
+        neighbours = loads_payload(getattr(candidate, "neighbours_json", None))
+    centroid = getattr(candidate, "centroid", None)
+    if not isinstance(centroid, dict):
+        centroid = loads_payload(getattr(candidate, "centroid_json", None))
+    contamination = neighbour_risk_flags(neighbours) if neighbours else None
+    extra = ""
+    if contamination:
+        extra += f" Contamination flags: {contamination}."
+    if isinstance(centroid, dict) and centroid.get("status") == "fail":
+        extra += " Centroid test failed (in-transit photocenter shift)."
+    elif isinstance(centroid, dict) and centroid.get("status") == "unavailable":
+        extra += f" Centroid unavailable ({centroid.get('reason') or 'n/a'})."
     return (
         f"{target.name} ({target.mission}) shows a periodic signal at "
         f"{candidate.period_days:.3f} d (SNR {candidate.snr:.1f}, "
         f"depth {candidate.depth_ppm:.0f} ppm baseline-normalized). "
-        f"{candidate.flag_reason}.{geom}{flags}"
+        f"{candidate.flag_reason}.{geom}{flags}{extra}"
     )
 
 

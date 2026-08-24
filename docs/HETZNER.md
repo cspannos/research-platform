@@ -215,6 +215,29 @@ Smoke: `/ingest` → `/analyze <slug>` → open `/review` detail; expect phase-f
 
 ---
 
+## Exoplanet Phase B schema (neighbours + centroid)
+
+After pulling Phase B, rebuild `platform-api`, `worker-exoplanet`, and `bot-exoplanet` (astroquery is a new dependency). Schema adds:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml exec -T postgres \
+  psql -U "$POSTGRES_USER" -d tenant_exoplanet <<'SQL'
+ALTER TABLE targets ADD COLUMN IF NOT EXISTS ra DOUBLE PRECISION;
+ALTER TABLE targets ADD COLUMN IF NOT EXISTS dec DOUBLE PRECISION;
+ALTER TABLE targets ADD COLUMN IF NOT EXISTS neighbours_json TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS neighbours_json TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS centroid_json TEXT;
+SQL
+```
+
+`init_db()` applies the same ALTERs once per process. TPFs cache under `data/exoplanet/cache/tpf/{slug}/` (one file per target; not refetched on every scan). Synthetic light curves never store a real centroid.
+
+Enqueue `exoplanet_vet_neighbours_job` (or re-analyze) to backfill Gaia/centroid for existing pending candidates.
+
+Smoke: `/review` queue cards show Approve/Reject plus neighbour count; detail shows the neighbour table and centroid pass/fail/unavailable.
+
+---
+
 ## Resource headroom
 
 | | Used | Available | Platform budget |

@@ -9,6 +9,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
+from projects.exoplanet.pipelines.neighbours import (
+    BRIGHT_FAIL_DMAG,
+    BRIGHT_UNCLEAR_DMAG,
+    DILUTION_FAIL,
+    DILUTION_UNCLEAR,
+    loads_payload,
+)
+
 ChecklistStatus = Literal["pass", "fail", "unclear", "unavailable"]
 
 # Plausible planet transit depth upper bound (~10% of continuum).
@@ -139,7 +147,7 @@ def _odd_even_item(
         label="Odd–even depths",
         status="pass",
         detail=f"Odd {odd:.0f} / even {even:.0f} ppm are consistent (Δ {used_delta:.0f}).",
-        next_action="Proceed to neighbour / centroid checks when Phase B is available.",
+        next_action="Proceed to neighbour / centroid checks.",
     )
 
 
@@ -170,6 +178,106 @@ def _plots_item(plots_ready: bool, available_plots: list[str] | None) -> Checkli
     )
 
 
+def _neighbours_item(neighbours: dict[str, Any] | None) -> ChecklistItem:
+    payload = neighbours if isinstance(neighbours, dict) else None
+    if not payload or payload.get("status") == "unavailable":
+        reason = (payload or {}).get("reason") or "Gaia cone not run yet."
+        return ChecklistItem(
+            id="neighbours",
+            label="Neighbours / dilution (Gaia)",
+            status="unavailable",
+            detail=f"Neighbour check unavailable ({reason}).",
+            next_action="Re-run vet_neighbours after network/catalog access, or set ra/dec on the target.",
+        )
+    n = payload.get("n_neighbours")
+    n_txt = "unknown" if n is None else str(int(n))
+    dmag = payload.get("brightest_delta_mag")
+    dil = payload.get("dilution")
+    bits = [f"{n_txt} Gaia neighbours within 1'"]
+    if isinstance(dmag, (int, float)):
+        bits.append(f"brightest ΔG={dmag:.2f}")
+    if isinstance(dil, (int, float)):
+        bits.append(f"dilution={dil:.2f}")
+    detail = "; ".join(bits)
+    if isinstance(dil, (int, float)) and dil < DILUTION_FAIL:
+        return ChecklistItem(
+            id="neighbours",
+            label="Neighbours / dilution (Gaia)",
+            status="fail",
+            detail=detail + " — heavy contamination likely.",
+            next_action="Do not approve on SNR alone; inspect neighbour table and centroid.",
+        )
+    if isinstance(dmag, (int, float)) and dmag < BRIGHT_FAIL_DMAG:
+        return ChecklistItem(
+            id="neighbours",
+            label="Neighbours / dilution (Gaia)",
+            status="fail",
+            detail=detail + " — comparably bright neighbour.",
+            next_action="Treat as blend risk; confirm photocenter is on the target.",
+        )
+    if (isinstance(dil, (int, float)) and dil < DILUTION_UNCLEAR) or (
+        isinstance(dmag, (int, float)) and dmag < BRIGHT_UNCLEAR_DMAG
+    ):
+        return ChecklistItem(
+            id="neighbours",
+            label="Neighbours / dilution (Gaia)",
+            status="unclear",
+            detail=detail + " — possible dilution.",
+            next_action="Compare aperture vs Gaia offsets; wait for centroid if TPF exists.",
+        )
+    return ChecklistItem(
+        id="neighbours",
+        label="Neighbours / dilution (Gaia)",
+        status="pass",
+        detail=detail + ".",
+        next_action="Continue with centroid / archive checks.",
+    )
+
+
+def _centroid_item(centroid: dict[str, Any] | None) -> ChecklistItem:
+    payload = centroid if isinstance(centroid, dict) else None
+    if not payload or payload.get("status") == "unavailable":
+        reason = (payload or {}).get("reason") or "TPF centroid not run yet."
+        return ChecklistItem(
+            id="centroid",
+            label="Centroid / aperture",
+            status="unavailable",
+            detail=f"Centroid unavailable ({reason}).",
+            next_action="Skip for synthetic LCs; otherwise fetch one TPF and re-run vet_neighbours.",
+        )
+    pvalue = payload.get("pvalue")
+    offset = payload.get("offset_pix")
+    bits = []
+    if isinstance(pvalue, (int, float)):
+        bits.append(f"p={pvalue:.3g}")
+    if isinstance(offset, (int, float)):
+        bits.append(f"offset={offset:.3f} px")
+    extra = f" ({', '.join(bits)})" if bits else ""
+    if payload.get("status") == "fail" or payload.get("pass") is False:
+        return ChecklistItem(
+            id="centroid",
+            label="Centroid / aperture",
+            status="fail",
+            detail=f"Significant in-transit photocenter shift{extra}.",
+            next_action="Likely background eclipse / blend — reject or follow up off-target.",
+        )
+    if payload.get("status") == "pass" or payload.get("pass") is True:
+        return ChecklistItem(
+            id="centroid",
+            label="Centroid / aperture",
+            status="pass",
+            detail=f"No significant centroid shift{extra}.",
+            next_action="Centroid consistent with the target aperture.",
+        )
+    return ChecklistItem(
+        id="centroid",
+        label="Centroid / aperture",
+        status="unclear",
+        detail=f"Centroid result incomplete{extra}.",
+        next_action="Re-run vet_neighbours with a readable TPF.",
+    )
+
+
 def build_vetting_checklist(
     *,
     depth_ppm: float | None,
@@ -178,25 +286,15 @@ def build_vetting_checklist(
     odd_even_delta_ppm: float | None = None,
     plots_ready: bool = False,
     available_plots: list[str] | None = None,
+    neighbours: dict[str, Any] | None = None,
+    centroid: dict[str, Any] | None = None,
 ) -> list[ChecklistItem]:
     items = [
         _depth_item(_f(depth_ppm)),
         _odd_even_item(_f(odd_depth_ppm), _f(even_depth_ppm), _f(odd_even_delta_ppm)),
         _plots_item(bool(plots_ready), available_plots),
-        ChecklistItem(
-            id="neighbours",
-            label="Neighbours / dilution (Gaia)",
-            status="unavailable",
-            detail="Phase B not deployed yet.",
-            next_action="Queue Phase B Gaia cone + dilution estimate.",
-        ),
-        ChecklistItem(
-            id="centroid",
-            label="Centroid / aperture",
-            status="unavailable",
-            detail="Phase B not deployed yet (needs TPF).",
-            next_action="Queue Phase B TPF centroid; skip for synthetic LCs.",
-        ),
+        _neighbours_item(neighbours),
+        _centroid_item(centroid),
         ChecklistItem(
             id="archive",
             label="Archive / known EB",
@@ -231,6 +329,12 @@ def checklist_from_candidate_like(obj: Any, available_plots: list[str] | None = 
     plots = available_plots
     if plots is None:
         plots = getattr(obj, "available_plots", None)
+    neighbours = getattr(obj, "neighbours", None)
+    if not isinstance(neighbours, dict):
+        neighbours = loads_payload(getattr(obj, "neighbours_json", None))
+    centroid = getattr(obj, "centroid", None)
+    if not isinstance(centroid, dict):
+        centroid = loads_payload(getattr(obj, "centroid_json", None))
     return build_vetting_checklist(
         depth_ppm=_f(getattr(obj, "depth_ppm", None)),
         odd_depth_ppm=_f(getattr(obj, "odd_depth_ppm", None)),
@@ -238,4 +342,6 @@ def checklist_from_candidate_like(obj: Any, available_plots: list[str] | None = 
         odd_even_delta_ppm=_f(getattr(obj, "odd_even_delta_ppm", None)),
         plots_ready=bool(getattr(obj, "plots_ready", False)),
         available_plots=list(plots) if plots else None,
+        neighbours=neighbours,
+        centroid=centroid,
     )

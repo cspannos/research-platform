@@ -18,6 +18,13 @@ def test_format_analyze_interesting() -> None:
             "flag_reason": "peak",
             "plots_ready": True,
             "t0": 12.3456,
+            "neighbours": {
+                "status": "ok",
+                "n_neighbours": 5,
+                "brightest_delta_mag": 2.4,
+                "dilution": 0.93,
+            },
+            "centroid": {"status": "unavailable", "reason": "synthetic_lc"},
         }
     )
     assert "toi-715" in text
@@ -25,6 +32,8 @@ def test_format_analyze_interesting() -> None:
     assert "Flagged: yes" in text
     assert "Vetting plots ready" in text
     assert "t0≈" in text
+    assert "Neighbours: 5" in text
+    assert "Centroid: unavailable (synthetic_lc)" in text
 
 
 def test_format_scan() -> None:

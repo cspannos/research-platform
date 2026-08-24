@@ -14,6 +14,8 @@ class TargetSpec(BaseModel):
     mission: str
     tic_id: str | None = None
     kic_id: str | None = None
+    ra: float | None = None
+    dec: float | None = None
     notes: str = ""
 
 
@@ -35,6 +37,7 @@ class ExoplanetSettings(BaseSettings):
     llm_summaries: bool = Field(default=False, alias="EXOPLANET_LLM_SUMMARIES")
     llm_model: str = Field(default="anthropic/claude-haiku-4.5", alias="EXOPLANET_LLM_MODEL")
     allow_synthetic: bool = Field(default=True, alias="EXOPLANET_ALLOW_SYNTHETIC")
+    fetch_tpf: bool = Field(default=True, alias="EXOPLANET_FETCH_TPF")
 
 
 @lru_cache

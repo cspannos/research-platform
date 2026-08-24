@@ -55,6 +55,8 @@ class CandidateOut(BaseModel):
     available_plots: list[str] = Field(default_factory=list)
     checklist: list[ChecklistItemOut] = Field(default_factory=list)
     checklist_next_action: str | None = None
+    neighbours: dict | None = None
+    centroid: dict | None = None
 
 
 class CandidateStatusUpdate(BaseModel):
@@ -108,6 +110,8 @@ def _serialize(row) -> CandidateOut:
             for i in (row.checklist or [])
         ],
         checklist_next_action=row.checklist_next_action,
+        neighbours=row.neighbours,
+        centroid=row.centroid,
     )
 
 
@@ -157,6 +161,13 @@ def list_targets() -> list[dict[str, str]]:
     from projects.exoplanet.settings import load_targets
 
     return [
-        {"id": t.id, "name": t.name, "mission": t.mission, "notes": t.notes}
+        {
+            "id": t.id,
+            "name": t.name,
+            "mission": t.mission,
+            "notes": t.notes,
+            "ra": str(t.ra) if t.ra is not None else "",
+            "dec": str(t.dec) if t.dec is not None else "",
+        }
         for t in load_targets()
     ]

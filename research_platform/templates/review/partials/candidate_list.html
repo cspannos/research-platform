@@ -2,6 +2,10 @@
 <p class="meta">No candidates in this queue.</p>
 {% endif %}
 
+{% if message %}
+<div class="flash">{{ message }}</div>
+{% endif %}
+
 {% for c in candidates %}
 <article class="card">
   <div style="display:flex; justify-content:space-between; gap:1rem; align-items:flex-start;">
@@ -12,6 +16,31 @@
         Depth ~{{ "%.0f"|format(c.depth_ppm) }} ppm
       </p>
       <p class="meta">{{ c.flag_reason }}</p>
+      {% set nb = c.neighbours or {} %}
+      {% set cent = c.centroid or {} %}
+      <p class="meta">
+        {% if nb.get('status') == 'ok' %}
+          Neighbours {{ nb.get('n_neighbours', 0) }}
+          {% if nb.get('brightest_delta_mag') is not none %}
+            · brightest ΔG {{ "%.2f"|format(nb.brightest_delta_mag) }}
+          {% else %}
+            · brightest ΔG unavailable
+          {% endif %}
+          {% if nb.get('dilution') is not none %}
+            · dilution {{ "%.2f"|format(nb.dilution) }}
+          {% else %}
+            · dilution unavailable
+          {% endif %}
+        {% else %}
+          Neighbours unavailable{% if nb.get('reason') %} ({{ nb.reason }}){% endif %}
+        {% endif %}
+        · Centroid
+        {% if cent.get('status') %}
+          <span class="badge checklist-{{ cent.status }}">{{ cent.status }}</span>
+        {% else %}
+          <span class="badge checklist-unavailable">unavailable</span>
+        {% endif %}
+      </p>
     </div>
     <span class="badge {{ c.status }}">{{ c.status }}</span>
   </div>
@@ -23,6 +52,20 @@
   {% endif %}
   <div class="actions">
     <a class="btn" href="/review/candidates/{{ c.id }}?token={{ request.query_params.get('token', '') }}">Open review</a>
+    <button class="approve"
+            hx-post="/review/candidates/{{ c.id }}/status?token={{ request.query_params.get('token', '') }}&view=list&status_filter={{ status_filter }}"
+            hx-vals='{"status": "approved"}'
+            hx-target="#candidate-list"
+            hx-swap="innerHTML">
+      Approve
+    </button>
+    <button class="reject"
+            hx-post="/review/candidates/{{ c.id }}/status?token={{ request.query_params.get('token', '') }}&view=list&status_filter={{ status_filter }}"
+            hx-vals='{"status": "rejected"}'
+            hx-target="#candidate-list"
+            hx-swap="innerHTML">
+      Reject
+    </button>
   </div>
 </article>
 {% endfor %}

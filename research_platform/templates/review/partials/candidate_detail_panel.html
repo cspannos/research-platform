@@ -61,6 +61,78 @@
   <p class="meta">Note: {{ candidate.geometry_note }}</p>
   {% endif %}
 
+  {% set nb = candidate.neighbours or {} %}
+  {% set cent = candidate.centroid or {} %}
+  <h3 style="margin-top:1rem;">Neighbours / dilution</h3>
+  {% if nb.get('status') == 'ok' %}
+  <p class="meta">
+    {{ nb.get('n_neighbours', 0) }} Gaia sources within {{ nb.get('radius_arcmin', 1) }}'
+    ({{ nb.get('n_in_aperture', 0) }} in {{ nb.get('aperture_arcsec', 21) }}" aperture)
+    {% if nb.get('brightest_delta_mag') is not none %}
+    · brightest ΔG {{ "%.2f"|format(nb.brightest_delta_mag) }}
+    {% else %}
+    · brightest ΔG unavailable
+    {% endif %}
+    {% if nb.get('dilution') is not none %}
+    · dilution {{ "%.2f"|format(nb.dilution) }}
+    {% else %}
+    · dilution unavailable
+    {% endif %}
+    {% if nb.get('coord_source') %}
+    · coords {{ nb.coord_source }}
+    {% endif %}
+  </p>
+  {% if nb.get('neighbours') %}
+  <table class="neighbours">
+    <thead>
+      <tr>
+        <th>Sep ″</th>
+        <th>G mag</th>
+        <th>ΔG</th>
+        <th>Aperture</th>
+        <th>Source</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for n in nb.neighbours[:12] %}
+      <tr class="{% if n.get('in_aperture') or (n.get('delta_mag') is not none and n.delta_mag < 2.5) %}bright{% endif %}">
+        <td>{{ "%.1f"|format(n.sep_arcsec) if n.get('sep_arcsec') is not none else "—" }}</td>
+        <td>{{ "%.2f"|format(n.gmag) if n.get('gmag') is not none else "—" }}</td>
+        <td>{{ "%+.2f"|format(n.delta_mag) if n.get('delta_mag') is not none else "—" }}</td>
+        <td>{% if n.get('in_aperture') %}yes{% else %}no{% endif %}</td>
+        <td class="meta">{{ n.get('source_id', '') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="meta">No neighbours besides the target within the cone.</p>
+  {% endif %}
+  {% else %}
+  <p class="meta">Neighbour summary unavailable{% if nb.get('reason') %}: {{ nb.reason }}{% endif %}</p>
+  {% endif %}
+
+  <h3 style="margin-top:1rem;">Centroid</h3>
+  <p class="meta">
+    {% if cent.get('status') %}
+    <span class="badge checklist-{{ cent.status }}">{{ cent.status }}</span>
+    {% else %}
+    <span class="badge checklist-unavailable">unavailable</span>
+    {% endif %}
+    {% if cent.get('pvalue') is not none %}
+    · p={{ "%.3g"|format(cent.pvalue) }}
+    {% endif %}
+    {% if cent.get('offset_pix') is not none %}
+    · offset {{ "%.3f"|format(cent.offset_pix) }} px
+    {% endif %}
+    {% if cent.get('tpf_label') %}
+    · TPF {{ cent.tpf_label }}
+    {% endif %}
+    {% if cent.get('reason') %}
+    · {{ cent.reason }}
+    {% endif %}
+  </p>
+
   <h3 style="margin-top:1rem;">Vetting plots</h3>
   {% if candidate.available_plots %}
   <p class="meta">Tap a plot to enlarge.</p>

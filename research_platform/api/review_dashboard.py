@@ -102,12 +102,28 @@ def review_set_status(
     request: Request,
     candidate_id: int,
     status: str = Form(...),
+    view: str = Query(default="detail"),
+    status_filter: str = Query(default="pending"),
     _: None = Depends(verify_review_access),
 ) -> Response:
     if status not in {"pending", "approved", "rejected"}:
         raise HTTPException(status_code=400, detail="invalid status")
     if not update_candidate_status(candidate_id, status):
         raise HTTPException(status_code=404, detail="candidate not found")
+    if view == "list":
+        rows = list_candidate_rows(
+            status=None if status_filter == "all" else status_filter,
+            limit=100,
+        )
+        return templates.TemplateResponse(
+            request,
+            "review/partials/candidate_list.html",
+            {
+                "candidates": rows,
+                "status_filter": status_filter,
+                "message": f"Candidate #{candidate_id} marked as {status}.",
+            },
+        )
     row = get_candidate_row(candidate_id)
     return templates.TemplateResponse(
         request,

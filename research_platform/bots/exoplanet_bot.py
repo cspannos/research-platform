@@ -119,6 +119,36 @@ def _format_analyze(result: dict[str, Any]) -> str:
             lines.append(f"  Geometry: {result.get('geometry_note')}")
         if result.get("t0") is not None:
             lines.append(f"  t0≈{float(result['t0']):.4f}")
+        neighbours = result.get("neighbours")
+        if isinstance(neighbours, dict):
+            if neighbours.get("status") == "ok":
+                n = neighbours.get("n_neighbours", 0)
+                dil = neighbours.get("dilution")
+                dmag = neighbours.get("brightest_delta_mag")
+                extra = f"  Neighbours: {n} within 1'"
+                if isinstance(dmag, (int, float)):
+                    extra += f", brightest ΔG={dmag:.2f}"
+                if isinstance(dil, (int, float)):
+                    extra += f", dilution={dil:.2f}"
+                lines.append(extra)
+            else:
+                lines.append(f"  Neighbours: unavailable ({neighbours.get('reason') or 'n/a'})")
+        centroid = result.get("centroid")
+        if isinstance(centroid, dict):
+            status = centroid.get("status") or "unavailable"
+            if centroid.get("pvalue") is not None:
+                lines.append(
+                    f"  Centroid: {status} (p={float(centroid['pvalue']):.3g}"
+                    + (
+                        f", offset={float(centroid['offset_pix']):.3f} px"
+                        if centroid.get("offset_pix") is not None
+                        else ""
+                    )
+                    + ")"
+                )
+            else:
+                reason = centroid.get("reason")
+                lines.append(f"  Centroid: {status}" + (f" ({reason})" if reason else ""))
     reason = result.get("flag_reason")
     if reason:
         lines.append(f"  {reason}")

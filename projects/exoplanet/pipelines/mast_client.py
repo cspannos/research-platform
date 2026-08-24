@@ -10,6 +10,7 @@ import httpx
 import numpy as np
 from astropy.io import fits
 
+from projects.exoplanet.pipelines.cache_manager import existing_tpf, tpf_cache_path
 from projects.exoplanet.settings import TargetSpec, get_exoplanet_settings
 from research_platform.core.logging import get_logger
 
@@ -332,3 +333,114 @@ def fetch_lightcurve(target: TargetSpec, *, allow_synthetic: bool | None = None)
         "Set MAST_API_TOKEN and ensure the target has public LC products, "
         "or set EXOPLANET_ALLOW_SYNTHETIC=true."
     )
+
+
+def _is_tpf_product(product: dict) -> bool:
+    filename = str(product.get("productFilename") or "").lower()
+    description = str(product.get("description") or "").lower()
+    subgroup = str(product.get("productSubGroupDescription") or "").upper()
+    if subgroup in {"TP", "TARG"}:
+        return True
+    if "tp.fits" in filename or filename.endswith("_tp.fits.gz"):
+        return True
+    if "tpf" in filename or "targ.fits" in filename or filename.endswith("_lpd-targ.fits.gz"):
+        return True
+    if "target pixel" in description:
+        return True
+    return False
+
+
+def _pick_tpf_product(products: list[dict]) -> dict | None:
+    candidates = [p for p in products if _is_tpf_product(p) and p.get("dataURI")]
+    if not candidates:
+        return None
+
+    def score(product: dict) -> tuple[int, int, float]:
+        filename = str(product.get("productFilename") or "").lower()
+        prefer = 0
+        if str(product.get("productType") or "").upper() == "SCIENCE":
+            prefer += 2
+        if "tp.fits" in filename or "targ" in filename:
+            prefer += 1
+        size = int(float(product.get("size") or 0))
+        # Prefer smaller files (short cadence TPFs can be huge).
+        return (prefer, -size if size else 0)
+
+    return sorted(candidates, key=score, reverse=True)[0]
+
+
+def _tpf_label(filename: str, mission: str) -> str:
+    import re
+
+    name = filename.lower()
+    tess = re.search(r"-s(\d{4})-", name)
+    if tess:
+        return f"s{tess.group(1)}"
+    kepler_q = re.search(r"q(\d{1,2})", name)
+    if kepler_q:
+        return f"q{int(kepler_q.group(1)):02d}"
+    mission_tag = "tess" if mission.upper() == "TESS" else "kepler"
+    return f"{mission_tag}-tpf"
+
+
+def fetch_target_pixel_file(target: TargetSpec) -> Path | None:
+    """
+    Download at most one TPF per target into the cache. Returns the cached path.
+
+    Never synthesizes a TPF. Missing token / network / products → None.
+    """
+    cached = existing_tpf(target.id)
+    if cached is not None:
+        logger.info("tpf_cache_hit", target=target.id, path=str(cached))
+        return cached
+
+    settings = get_exoplanet_settings()
+    if not settings.fetch_tpf:
+        logger.info("tpf_skipped", target=target.id, reason="EXOPLANET_FETCH_TPF=false")
+        return None
+    token = settings.mast_api_token
+    if not token:
+        logger.info("tpf_skipped", target=target.id, reason="no_mast_token")
+        return None
+
+    observations = _query_mast_observations(target, token)
+    if not observations:
+        logger.warning("tpf_no_observations", target=target.id)
+        return None
+
+    def obs_score(row: dict) -> tuple[float, float]:
+        return (float(row.get("t_exptime") or 0), float(row.get("t_max") or 0))
+
+    for obs in sorted(observations, key=obs_score, reverse=True)[:6]:
+        obsid = obs.get("obsid") or obs.get("obsID")
+        if not obsid:
+            continue
+        products = _query_mast_products(str(obsid), token)
+        product = _pick_tpf_product(products)
+        if product is None:
+            continue
+        data_uri = product["dataURI"]
+        filename = str(product.get("productFilename") or "tpf.fits")
+        try:
+            payload = _download_product_bytes(data_uri, token)
+            label = _tpf_label(filename, target.mission)
+            dest = tpf_cache_path(target.id, label, create=True)
+            dest.write_bytes(payload)
+            logger.info(
+                "tpf_downloaded",
+                target=target.id,
+                path=str(dest),
+                bytes=len(payload),
+                obsid=obsid,
+            )
+            return dest
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "tpf_product_failed",
+                target=target.id,
+                obsid=obsid,
+                uri=data_uri,
+                error=str(exc),
+            )
+            continue
+    return None
