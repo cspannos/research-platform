@@ -36,18 +36,19 @@ def _model_name() -> str:
 def chat_exoplanet_expert(
     user_content: str,
     *,
-    max_tokens: int = 500,
+    max_tokens: int = 350,
     temperature: float = 0.2,
 ) -> tuple[str | None, str]:
     """
     Call the shared exoplanet expert via OpenRouter.
 
-    Returns (content, source) where source is 'llm' or 'unavailable'.
+    Returns (content, source). source is 'llm' on success, otherwise a short
+    failure tag (no_key, credits, http_NNN, error).
     """
     api_key = _openrouter_api_key()
     if not api_key:
         logger.info("exoplanet_expert_skipped", reason="no_openrouter_key")
-        return None, "unavailable"
+        return None, "no_key"
 
     payload = {
         "model": _model_name(),
@@ -74,14 +75,16 @@ def chat_exoplanet_expert(
                 body=response.text[:200],
                 model=_model_name(),
             )
-            return None, "unavailable"
+            if response.status_code == 402:
+                return None, "credits"
+            return None, f"http_{response.status_code}"
         content = response.json()["choices"][0]["message"]["content"].strip()
         if not content:
-            return None, "unavailable"
+            return None, "empty"
         return content, "llm"
     except Exception as exc:  # noqa: BLE001
         logger.warning("exoplanet_expert_error", error=str(exc))
-        return None, "unavailable"
+        return None, "error"
 
 
 def _as_float(value: object) -> float | None:
@@ -292,11 +295,20 @@ def answer_exoplanet_question(
             f"QUESTION:\n{q}"
         )
 
-    text, source = chat_exoplanet_expert(prompt, max_tokens=700, temperature=0.25)
+    text, source = chat_exoplanet_expert(prompt, max_tokens=350, temperature=0.25)
     if not text:
+        hints = {
+            "no_key": "Set OPENROUTER_API_KEY in .env and recreate bot-exoplanet.",
+            "credits": (
+                "OpenRouter 402: add credits at https://openrouter.ai/settings/credits "
+                "(this reply needed more tokens than the account can afford)."
+            ),
+            "empty": "OpenRouter returned an empty completion.",
+            "error": "OpenRouter request failed (network/timeout). Check bot-exoplanet logs.",
+        }
         return {
             "ok": False,
-            "reason": "llm_unavailable",
-            "hint": "Set OPENROUTER_API_KEY in .env and recreate platform-api / bot-exoplanet.",
+            "reason": source if source != "llm" else "llm_unavailable",
+            "hint": hints.get(source, f"OpenRouter call failed ({source})."),
         }
     return {"ok": True, "source": source, "answer": text, "candidate_id": candidate_id}

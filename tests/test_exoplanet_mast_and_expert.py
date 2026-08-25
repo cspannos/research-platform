@@ -99,3 +99,47 @@ def test_expert_template_when_no_key(monkeypatch) -> None:
 
     exo_settings.get_exoplanet_settings.cache_clear()
     platform_config.get_settings.cache_clear()
+
+
+def test_ask_without_key_explains_missing_key(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "")
+    from projects.exoplanet import settings as exo_settings
+    from research_platform.core import config as platform_config
+
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()
+
+    from projects.exoplanet.pipelines.expert import answer_exoplanet_question
+
+    result = answer_exoplanet_question("What is SNR?")
+    assert result["ok"] is False
+    assert result["reason"] == "no_key"
+    assert "OPENROUTER_API_KEY" in str(result.get("hint"))
+
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()
+
+
+def test_ask_credits_error_is_not_missing_key(monkeypatch) -> None:
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    from projects.exoplanet import settings as exo_settings
+    from research_platform.core import config as platform_config
+
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()
+
+    class _Resp:
+        status_code = 402
+        text = '{"error":{"message":"This request requires more credits"}}'
+
+    from projects.exoplanet.pipelines import expert as expert_mod
+
+    with patch.object(expert_mod.httpx, "Client") as client_cls:
+        client_cls.return_value.__enter__.return_value.post.return_value = _Resp()
+        result = expert_mod.answer_exoplanet_question("What is SNR?")
+    assert result["ok"] is False
+    assert result["reason"] == "credits"
+    assert "credits" in str(result.get("hint")).lower()
+
+    exo_settings.get_exoplanet_settings.cache_clear()
+    platform_config.get_settings.cache_clear()
