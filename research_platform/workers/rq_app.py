@@ -38,10 +38,20 @@ def main() -> None:
 
     url = redis_url_for_tenant(settings.redis_url, tenant)
     conn = redis.from_url(url)
-    queue = Queue(tenant.queue_name, connection=conn)
+    queues = [Queue(tenant.queue_name, connection=conn)]
+    # Phase C: long-timeout validation jobs stay off the main scan/ingest queue.
+    if tenant.tenant_id.value == "exoplanet":
+        from projects.exoplanet.pipelines.validate import VALIDATE_QUEUE_NAME
 
-    logger.info("worker_starting", queue=tenant.queue_name, redis_db=tenant.redis_db)
-    worker = Worker([queue], connection=conn)
+        queues.append(Queue(VALIDATE_QUEUE_NAME, connection=conn))
+
+    logger.info(
+        "worker_starting",
+        queue=tenant.queue_name,
+        extra_queues=[q.name for q in queues[1:]],
+        redis_db=tenant.redis_db,
+    )
+    worker = Worker(queues, connection=conn)
     worker.work(with_scheduler=False)
 
 

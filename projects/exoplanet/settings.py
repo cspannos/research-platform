@@ -38,6 +38,9 @@ class ExoplanetSettings(BaseSettings):
     llm_model: str = Field(default="anthropic/claude-haiku-4.5", alias="EXOPLANET_LLM_MODEL")
     allow_synthetic: bool = Field(default=True, alias="EXOPLANET_ALLOW_SYNTHETIC")
     fetch_tpf: bool = Field(default=True, alias="EXOPLANET_FETCH_TPF")
+    triceratops: bool = Field(default=False, alias="EXOPLANET_TRICERATOPS")
+    validate_min_snr: float = Field(default=8.0, alias="EXOPLANET_VALIDATE_MIN_SNR")
+    validate_timeout_s: int = Field(default=900, alias="EXOPLANET_VALIDATE_TIMEOUT_S")
 
 
 @lru_cache

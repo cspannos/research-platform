@@ -238,6 +238,35 @@ Smoke: `/review` queue cards show Approve/Reject plus neighbour count; detail sh
 
 ---
 
+## Exoplanet Phase C schema (statistical validation)
+
+After pulling Phase C, rebuild `platform-api`, `worker-exoplanet`, and `bot-exoplanet`. Schema adds:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.hetzner.yml exec -T postgres \
+  psql -U "$POSTGRES_USER" -d tenant_exoplanet <<'SQL'
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS validation_json TEXT;
+SQL
+```
+
+`init_db()` applies the same ALTER once per process.
+
+**Default off.** Set `EXOPLANET_TRICERATOPS=true` on the host `.env` and recreate `worker-exoplanet` (and `bot-exoplanet` / `platform-api` for the UI command). `worker-exoplanet` is built with `INSTALL_TRICERATOPS=true` (TRICERATOPS from GitHub, NumPy 2 shim) and stays at **1 CPU / 4 GB**; validation jobs go on the `exoplanet-validate` RQ queue (same Redis DB, same worker process, longer `job_timeout`).
+
+Runtime (document for reviewers):
+
+| Path | Typical time | When |
+|------|----------------|------|
+| Flag off / SNR or period gate fail / Kepler / synthetic | milliseconds | Job records `unavailable` + reason |
+| Equivalent FPP (package not installed) | < 1 s | Uses odd/even + Gaia dilution + centroid already stored |
+| Real `triceratops` (`pip install triceratops`, N=20_000, `parallel=False`) | typically **5–30 min** on 1 CPU | High-SNR TESS with TIC id; timeout `EXOPLANET_VALIDATE_TIMEOUT_S` (default 900 s) |
+
+**Never part of `/scan`.** Trigger from `/review` “Run validation” or Telegram `/vet-validate <id>`. Failures store `status=unavailable` plus a short `error` snippet.
+
+Smoke: pick a high-SNR TESS candidate on `/review`, click Run validation (or `/vet-validate <id>`), expect FPP/NFPP (or unavailable + reason) on the detail panel and in Enrich / `/ask` context. `/scan` must still return without waiting for this job.
+
+---
+
 ## Resource headroom
 
 | | Used | Available | Platform budget |

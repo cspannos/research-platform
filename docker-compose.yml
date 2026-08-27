@@ -313,8 +313,15 @@ services:
 
   worker-exoplanet:
     <<: *platform-common
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.platform
+      args:
+        INSTALL_TRICERATOPS: "true"
     profiles: ["exoplanet"]
     read_only: false
+    tmpfs:
+      - /tmp:mode=1777,size=512m
     command: ["python", "-m", "research_platform.workers.rq_app", "--tenant", "exoplanet"]
     environment:
       SERVICE_NAME: worker-exoplanet
@@ -325,6 +332,9 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       EXOPLANET_ALLOW_SYNTHETIC: ${EXOPLANET_ALLOW_SYNTHETIC:-true}
       EXOPLANET_FETCH_TPF: ${EXOPLANET_FETCH_TPF:-true}
+      EXOPLANET_TRICERATOPS: ${EXOPLANET_TRICERATOPS:-false}
+      EXOPLANET_VALIDATE_MIN_SNR: ${EXOPLANET_VALIDATE_MIN_SNR:-8.0}
+      EXOPLANET_VALIDATE_TIMEOUT_S: ${EXOPLANET_VALIDATE_TIMEOUT_S:-900}
       EXOPLANET_LLM_MODEL: ${EXOPLANET_LLM_MODEL:-anthropic/claude-haiku-4.5}
       EXOPLANET_LLM_SUMMARIES: ${EXOPLANET_LLM_SUMMARIES:-false}
     volumes:
@@ -336,7 +346,7 @@ services:
       resources:
         limits:
           cpus: "1.00"
-          memory: 2048M
+          memory: 4096M
     depends_on:
       redis:
         condition: service_healthy

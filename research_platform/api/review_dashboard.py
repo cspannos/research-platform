@@ -171,6 +171,35 @@ def review_enrich_summary(
     )
 
 
+@router.post("/candidates/{candidate_id}/validate", response_class=HTMLResponse)
+def review_run_validation(
+    request: Request,
+    candidate_id: int,
+    _: None = Depends(verify_review_access),
+) -> Response:
+    from projects.exoplanet.pipelines.validate import enqueue_validation
+
+    result = enqueue_validation(candidate_id, force=True)
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail="candidate not found")
+    row = get_candidate_row(candidate_id)
+    timeout = int(result.get("timeout_s") or 900)
+    if result.get("enabled"):
+        message = (
+            f"Validation queued (timeout {timeout}s). "
+            "Equivalent FPP is usually under a second; TRICERATOPS can take 5–30 min."
+        )
+    else:
+        message = (
+            "Validation queued (EXOPLANET_TRICERATOPS is off — job will record unavailable)."
+        )
+    return templates.TemplateResponse(
+        request,
+        "review/partials/candidate_detail_panel.html",
+        {"candidate": row, "message": message},
+    )
+
+
 def review_root_redirect(request: Request) -> RedirectResponse:
     token = request.query_params.get("token", "")
     url = f"/review/?token={token}" if token else "/review/"

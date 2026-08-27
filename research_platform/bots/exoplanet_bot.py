@@ -65,6 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /summaries — generate human-review summaries\n"
         "  /notify — send Telegram digest of pending candidates\n"
         "  /ask [candidate_id] <question> — exoplanet expert (same LLM as review Enrich)\n"
+        "  /vet-validate <id> — queue optional FPP/NFPP (never part of /scan)\n"
         "  /review — WireGuard URL + admin token for the review dashboard\n"
         "Or just send a free-text question."
     )
@@ -197,6 +198,33 @@ def _format_notify(result: dict[str, Any]) -> str:
     return f"Notify: digest sent to {result.get('sent', 0)} recipient(s)."
 
 
+def _format_validation(result: dict[str, Any]) -> str:
+    cid = result.get("candidate_id")
+    if result.get("ok") is False:
+        return f"Validation: candidate #{cid} not found."
+    payload = result.get("validation") if isinstance(result.get("validation"), dict) else result
+    if not isinstance(payload, dict):
+        return f"Validation #{cid}: {result!r}"
+    status = payload.get("status") or "unknown"
+    method = payload.get("method")
+    lines = [f"Validation #{cid}: {status}" + (f" ({method})" if method else "")]
+    if payload.get("fpp") is not None:
+        lines.append(f"  FPP={float(payload['fpp']):.3g}")
+    if payload.get("nfpp") is not None:
+        lines.append(f"  NFPP={float(payload['nfpp']):.3g}")
+    if payload.get("prob_nearby_eb") is not None and payload.get("nfpp") is None:
+        lines.append(f"  nearby-EB={float(payload['prob_nearby_eb']):.3g}")
+    if payload.get("reason"):
+        lines.append(f"  reason={payload['reason']}")
+    if payload.get("error"):
+        lines.append(f"  error={str(payload['error'])[:200]}")
+    if payload.get("note"):
+        lines.append(f"  {payload['note']}")
+    if result.get("cached"):
+        lines.append("  (cached)")
+    return "\n".join(lines)
+
+
 def _format_job_result(job_name: str, outcome: dict[str, Any]) -> str:
     if not outcome.get("ok"):
         return f"{job_name} failed: {outcome.get('error', 'unknown error')}"
@@ -209,6 +237,7 @@ def _format_job_result(job_name: str, outcome: dict[str, Any]) -> str:
         "ingest": _format_ingest,
         "summaries": _format_summaries,
         "notify": _format_notify,
+        "validate": _format_validation,
     }
     formatter = formatters.get(job_name)
     if formatter is None:
@@ -322,6 +351,55 @@ async def ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _reply_expert(update, question, candidate_id)
 
 
+async def vet_validate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Queue Phase C FPP; do not wait the full TRICERATOPS timeout."""
+    if not await _guard(update):
+        return
+    args = list(context.args or [])
+    raw = args[0].lstrip("#") if args else ""
+    if not raw.isdigit():
+        await update.message.reply_text("Usage: /vet-validate <candidate_id>")
+        return
+    candidate_id = int(raw)
+    from projects.exoplanet.pipelines.validate import VALIDATE_QUEUE_NAME, enqueue_validation
+
+    result = await asyncio.to_thread(enqueue_validation, candidate_id, force=True)
+    if not result.get("ok"):
+        await update.message.reply_text(f"Candidate #{candidate_id} not found.")
+        return
+    timeout_s = int(result.get("timeout_s") or 900)
+    job_id = result.get("job_id")
+    await update.message.reply_text(
+        f"Queued validation for #{candidate_id} ({job_id}). "
+        f"Equivalent FPP is usually <1s; TRICERATOPS can take 5–30 min "
+        f"(timeout {timeout_s}s). Waiting up to 45s…"
+    )
+    settings = get_settings()
+    queue = get_queue(settings.tenant_id, queue_name=VALIDATE_QUEUE_NAME)
+    job = queue.fetch_job(str(job_id)) if job_id else None
+    if job is None:
+        await update.message.reply_text("Job id missing; check /review for FPP status.")
+        return
+    outcome = await asyncio.to_thread(_wait_for_job, job, 45.0)
+    if not outcome.get("ok"):
+        err = str(outcome.get("error") or "")
+        if "timed out" in err.lower():
+            await update.message.reply_text(
+                f"Still running (#{candidate_id}). Check /review — do not re-run /scan."
+            )
+            return
+        await update.message.reply_text(f"Validation failed: {err}")
+        return
+    payload = outcome.get("result")
+    if not isinstance(payload, dict):
+        await update.message.reply_text("Validation finished; check /review.")
+        return
+    text = _format_validation(payload)
+    if len(text) > 3500:
+        text = text[:3490] + "\n…"
+    await update.message.reply_text(text)
+
+
 async def review_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the admin review dashboard URL (WireGuard) including the admin token."""
     if not await _guard(update):
@@ -366,6 +444,7 @@ async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "notify",
         "ask",
         "review",
+        "vet-validate",
     }
     if cleaned.startswith("/"):
         cmd = cleaned[1:].split()[0].split("@", 1)[0].lower()
@@ -402,6 +481,7 @@ def main() -> None:
     app.add_handler(CommandHandler("summaries", summaries))
     app.add_handler(CommandHandler("notify", notify))
     app.add_handler(CommandHandler("ask", ask))
+    app.add_handler(CommandHandler("vet-validate", vet_validate_cmd))
     app.add_handler(CommandHandler("review", review_link))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, free_text_ask))
     app.add_handler(MessageHandler(filters.ALL, echo_unauthorized))

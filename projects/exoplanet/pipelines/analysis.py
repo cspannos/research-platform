@@ -139,7 +139,10 @@ def _apply_geometry_and_plots(
 
 
 def _apply_phase_b(candidate: Candidate, target: Target) -> dict[str, object]:
-    """Gaia neighbours + optional TPF centroid; never raises to the caller."""
+    """Gaia neighbours + optional TPF centroid; never raises to the caller.
+
+    Phase C statistical validation is *not* invoked here — /scan must stay fast.
+    """
     try:
         return apply_neighbour_vetting(candidate, target)
     except Exception as exc:  # noqa: BLE001

@@ -7,8 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Worker-only: TRICERATOPS + numba/pytransit need a compiler at build time.
+ARG INSTALL_TRICERATOPS=false
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl tini \
+    && if [ "$INSTALL_TRICERATOPS" = "true" ]; then \
+         apt-get install -y --no-install-recommends git gcc g++ gfortran libgomp1; \
+       fi \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10001 app \
     && useradd --uid 10001 --gid app --create-home --shell /usr/sbin/nologin app
@@ -19,7 +25,10 @@ COPY projects ./projects
 COPY configs ./configs
 
 RUN pip install --upgrade pip \
-    && pip install .
+    && pip install . \
+    && if [ "$INSTALL_TRICERATOPS" = "true" ]; then \
+         pip install "git+https://github.com/stevengiacalone/triceratops.git@a2f60bd70e9f40c9a00834b858e01362c3dda501"; \
+       fi
 
 USER app
 

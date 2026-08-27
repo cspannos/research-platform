@@ -57,6 +57,7 @@ class CandidateOut(BaseModel):
     checklist_next_action: str | None = None
     neighbours: dict | None = None
     centroid: dict | None = None
+    validation: dict | None = None
 
 
 class CandidateStatusUpdate(BaseModel):
@@ -112,6 +113,7 @@ def _serialize(row) -> CandidateOut:
         checklist_next_action=row.checklist_next_action,
         neighbours=row.neighbours,
         centroid=row.centroid,
+        validation=row.validation,
     )
 
 

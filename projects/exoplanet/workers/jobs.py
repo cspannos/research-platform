@@ -8,6 +8,7 @@ from projects.exoplanet.pipelines.analysis import (
     vet_candidate,
 )
 from projects.exoplanet.pipelines.neighbours import vet_neighbours
+from projects.exoplanet.pipelines.validate import vet_validate
 from projects.exoplanet.pipelines.ingest import ingest_all_targets, ingest_target
 from projects.exoplanet.pipelines.summaries import format_telegram_digest, generate_summaries_for_pending
 from projects.exoplanet.settings import load_targets
@@ -36,6 +37,11 @@ def exoplanet_vet_candidate_job(candidate_id: int) -> dict[str, object]:
 def exoplanet_vet_neighbours_job(candidate_id: int, force: bool = False) -> dict[str, object]:
     """Phase B: Gaia cone + dilution + optional TPF centroid (idempotent)."""
     return vet_neighbours(candidate_id, force=force)
+
+
+def exoplanet_vet_validate_job(candidate_id: int, force: bool = False) -> dict[str, object]:
+    """Phase C: optional FPP/NFPP on exoplanet-validate queue. Never used by /scan."""
+    return vet_validate(candidate_id, force=force)
 
 
 def exoplanet_review_summary_job() -> dict[str, object]:

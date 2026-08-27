@@ -40,6 +40,17 @@
         {% else %}
           <span class="badge checklist-unavailable">unavailable</span>
         {% endif %}
+        {% set val = c.validation or {} %}
+        · FPP
+        {% if val.get('status') == 'ok' and val.get('fpp') is not none %}
+          {{ "%.3g"|format(val.fpp) }}
+          {% if val.get('method') %}({{ val.method }}){% endif %}
+        {% elif val.get('status') %}
+          <span class="badge checklist-{{ val.status if val.status in ['ok', 'pass', 'fail', 'unclear', 'unavailable'] else 'unavailable' }}">{{ val.status }}</span>
+          {% if val.get('reason') %}({{ val.reason }}){% endif %}
+        {% else %}
+          <span class="badge checklist-unavailable">not run</span>
+        {% endif %}
       </p>
     </div>
     <span class="badge {{ c.status }}">{{ c.status }}</span>

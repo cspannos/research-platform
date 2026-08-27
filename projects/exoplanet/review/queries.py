@@ -57,6 +57,7 @@ class CandidateRow:
     checklist_next_action: str | None = None
     neighbours: dict | None = None
     centroid: dict | None = None
+    validation: dict | None = None
 
 
 def _latest_summary(session, candidate_id: int) -> ReviewSummary | None:
@@ -93,11 +94,13 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         getattr(target, "neighbours_json", None)
     )
     centroid = loads_payload(getattr(candidate, "centroid_json", None))
+    validation = loads_payload(getattr(candidate, "validation_json", None))
     # Temporary attrs for checklist helper
     candidate.available_plots = plots  # type: ignore[attr-defined]
     candidate.plots_ready = plots_ready
     candidate.neighbours = neighbours  # type: ignore[attr-defined]
     candidate.centroid = centroid  # type: ignore[attr-defined]
+    candidate.validation = validation  # type: ignore[attr-defined]
     items = checklist_from_candidate_like(candidate, available_plots=plots)
     checklist_rows = [
         ChecklistItemRow(
@@ -135,6 +138,7 @@ def _to_row(session, candidate: Candidate, target: Target) -> CandidateRow:
         checklist_next_action=checklist_blocking_action(items),
         neighbours=neighbours,
         centroid=centroid,
+        validation=validation,
     )
 
 

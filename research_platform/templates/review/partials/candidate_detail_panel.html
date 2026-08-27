@@ -133,6 +133,41 @@
     {% endif %}
   </p>
 
+  {% set val = candidate.validation or {} %}
+  <h3 style="margin-top:1rem;">Statistical validation (FPP)</h3>
+  <p class="meta">
+    {% if val.get('status') %}
+    <span class="badge checklist-{{ val.status if val.status in ['ok', 'pass', 'fail', 'unclear', 'unavailable'] else 'unavailable' }}">{{ val.status }}</span>
+    {% else %}
+    <span class="badge checklist-unavailable">not run</span>
+    {% endif %}
+    {% if val.get('method') %}
+    · {{ val.method }}
+    {% endif %}
+    {% if val.get('fpp') is not none %}
+    · FPP {{ "%.3g"|format(val.fpp) }}
+    {% endif %}
+    {% if val.get('nfpp') is not none %}
+    · NFPP {{ "%.3g"|format(val.nfpp) }}
+    {% endif %}
+    {% if val.get('prob_nearby_eb') is not none and val.get('nfpp') is none %}
+    · nearby-EB {{ "%.3g"|format(val.prob_nearby_eb) }}
+    {% endif %}
+    {% if val.get('reason') %}
+    · {{ val.reason }}
+    {% endif %}
+    {% if val.get('error') %}
+    · {{ val.error }}
+    {% endif %}
+    {% if val.get('note') %}
+    · {{ val.note }}
+    {% endif %}
+  </p>
+  <p class="meta">
+    Opt-in job (never part of /scan). Equivalent FPP is usually &lt;1s from stored metrics.
+    Real TRICERATOPS (if installed, EXOPLANET_TRICERATOPS=true) typically 5–30 min on 1 CPU.
+  </p>
+
   <h3 style="margin-top:1rem;">Vetting plots</h3>
   {% if candidate.available_plots %}
   <p class="meta">Tap a plot to enlarge.</p>
@@ -171,6 +206,12 @@
   {% endif %}
 
   <div class="actions">
+    <button class="primary"
+            hx-post="/review/candidates/{{ candidate.id }}/validate?token={{ request.query_params.get('token', '') }}"
+            hx-target="#candidate-panel"
+            hx-swap="innerHTML">
+      Run validation
+    </button>
     <button class="primary"
             hx-post="/review/candidates/{{ candidate.id }}/enrich?token={{ request.query_params.get('token', '') }}"
             hx-target="#candidate-panel"

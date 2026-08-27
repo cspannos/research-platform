@@ -155,6 +155,27 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         if reason:
             bits.append(str(reason))
         centroid_line = ", ".join(bits)
+    validation = getattr(candidate, "validation", None)
+    if not isinstance(validation, dict):
+        validation = loads_payload(getattr(candidate, "validation_json", None))
+    validation_line = "unavailable (not run)"
+    if isinstance(validation, dict):
+        status = validation.get("status") or "unavailable"
+        method = validation.get("method")
+        fpp = validation.get("fpp")
+        nfpp = validation.get("nfpp")
+        bits = [str(status)]
+        if method:
+            bits.append(f"method={method}")
+        if isinstance(fpp, (int, float)):
+            bits.append(f"FPP={fpp:.3g}")
+        if isinstance(nfpp, (int, float)):
+            bits.append(f"NFPP={nfpp:.3g}")
+        if validation.get("reason"):
+            bits.append(str(validation.get("reason")))
+        if validation.get("error"):
+            bits.append(f"error={str(validation.get('error'))[:120]}")
+        validation_line = ", ".join(bits)
     return (
         f"Target: {target.name} (slug={target.slug}, mission={target.mission}, "
         f"external_id={target.external_id})\n"
@@ -172,6 +193,7 @@ def _candidate_context(candidate: Candidate, target: Target) -> str:
         f"Vetting plots ready: {plots}\n"
         f"Neighbours: {neighbour_line}\n"
         f"Centroid: {centroid_line}\n"
+        f"Statistical validation: {validation_line}\n"
         f"{checklist}\n"
         f"Status: {candidate.status}\n"
         f"Detection note: {candidate.flag_reason}"
@@ -230,6 +252,20 @@ def template_review_summary(candidate: Candidate, target: Target) -> str:
         extra += " Centroid test failed (in-transit photocenter shift)."
     elif isinstance(centroid, dict) and centroid.get("status") == "unavailable":
         extra += f" Centroid unavailable ({centroid.get('reason') or 'n/a'})."
+    validation = getattr(candidate, "validation", None)
+    if not isinstance(validation, dict):
+        validation = loads_payload(getattr(candidate, "validation_json", None))
+    if isinstance(validation, dict):
+        fpp = validation.get("fpp")
+        nfpp = validation.get("nfpp")
+        method = validation.get("method") or "n/a"
+        if validation.get("status") == "ok" and isinstance(fpp, (int, float)):
+            extra += f" FPP={fpp:.3g}"
+            if isinstance(nfpp, (int, float)):
+                extra += f", NFPP={nfpp:.3g}"
+            extra += f" ({method})."
+        elif validation.get("status") == "unavailable":
+            extra += f" FPP unavailable ({validation.get('reason') or 'n/a'})."
     return (
         f"{target.name} ({target.mission}) shows a periodic signal at "
         f"{candidate.period_days:.3f} d (SNR {candidate.snr:.1f}, "

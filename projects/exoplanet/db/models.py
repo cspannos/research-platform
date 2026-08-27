@@ -78,6 +78,8 @@ class Candidate(Base):
     # Phase B neighbour / centroid snapshots (JSON text)
     neighbours_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     centroid_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
+    # Phase C statistical validation (FPP / NFPP JSON)
+    validation_json: Mapped[str | None] = mapped_column(Text, nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -149,6 +151,7 @@ _CANDIDATE_VETTING_COLUMNS: tuple[tuple[str, str], ...] = (
     ("plots_ready", "BOOLEAN DEFAULT FALSE"),
     ("neighbours_json", "TEXT"),
     ("centroid_json", "TEXT"),
+    ("validation_json", "TEXT"),
 )
 
 _TARGET_VETTING_COLUMNS: tuple[tuple[str, str], ...] = (
@@ -174,7 +177,7 @@ def _existing_columns(conn, table: str) -> set[str]:
 
 
 def ensure_vetting_schema(engine=None) -> None:
-    """Apply missing Phase A/B columns only (no-op when already present).
+    """Apply missing Phase A/B/C columns only (no-op when already present).
 
     Important: do not run unconditional ALTER on every request — Postgres still
     takes relation locks for ADD COLUMN IF NOT EXISTS and can stall the pool.

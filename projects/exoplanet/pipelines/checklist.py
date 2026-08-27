@@ -278,6 +278,61 @@ def _centroid_item(centroid: dict[str, Any] | None) -> ChecklistItem:
     )
 
 
+def _fpp_item(validation: dict[str, Any] | None) -> ChecklistItem:
+    from projects.exoplanet.pipelines.validate import FPP_LIKELY, FPP_VALIDATED, NFPP_NEARBY_FP
+
+    payload = validation if isinstance(validation, dict) else None
+    if not payload or payload.get("status") == "unavailable":
+        reason = (payload or {}).get("reason") or "not run yet"
+        return ChecklistItem(
+            id="fpp",
+            label="Statistical validation (FPP)",
+            status="unavailable",
+            detail=f"FPP unavailable ({reason}).",
+            next_action="Run validation from /review or /vet-validate <id> (EXOPLANET_TRICERATOPS=true).",
+        )
+    fpp = payload.get("fpp")
+    nfpp = payload.get("nfpp")
+    method = payload.get("method") or "unknown"
+    bits = [f"method={method}"]
+    if isinstance(fpp, (int, float)):
+        bits.append(f"FPP={fpp:.3g}")
+    if isinstance(nfpp, (int, float)):
+        bits.append(f"NFPP={nfpp:.3g}")
+    detail = "; ".join(bits)
+    if isinstance(nfpp, (int, float)) and nfpp >= NFPP_NEARBY_FP:
+        return ChecklistItem(
+            id="fpp",
+            label="Statistical validation (FPP)",
+            status="fail",
+            detail=detail + " — likely nearby false positive.",
+            next_action="Do not validate; inspect neighbours/centroid and reject or follow up.",
+        )
+    if isinstance(fpp, (int, float)) and fpp >= FPP_LIKELY:
+        return ChecklistItem(
+            id="fpp",
+            label="Statistical validation (FPP)",
+            status="fail",
+            detail=detail + " — FPP ≥ 0.5.",
+            next_action="Treat as FP until new photometry/centroids say otherwise.",
+        )
+    if isinstance(fpp, (int, float)) and fpp >= FPP_VALIDATED:
+        return ChecklistItem(
+            id="fpp",
+            label="Statistical validation (FPP)",
+            status="unclear",
+            detail=detail + " — not below the 0.015 validation cut.",
+            next_action="Likely planet only if NFPP is tiny; need more data to validate.",
+        )
+    return ChecklistItem(
+        id="fpp",
+        label="Statistical validation (FPP)",
+        status="pass",
+        detail=detail + " — below Giacalone et al. FPP cut.",
+        next_action="FPP is low; still confirm odd-even and centroid before approve.",
+    )
+
+
 def build_vetting_checklist(
     *,
     depth_ppm: float | None,
@@ -288,6 +343,7 @@ def build_vetting_checklist(
     available_plots: list[str] | None = None,
     neighbours: dict[str, Any] | None = None,
     centroid: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
 ) -> list[ChecklistItem]:
     items = [
         _depth_item(_f(depth_ppm)),
@@ -295,6 +351,7 @@ def build_vetting_checklist(
         _plots_item(bool(plots_ready), available_plots),
         _neighbours_item(neighbours),
         _centroid_item(centroid),
+        _fpp_item(validation),
         ChecklistItem(
             id="archive",
             label="Archive / known EB",
@@ -335,6 +392,9 @@ def checklist_from_candidate_like(obj: Any, available_plots: list[str] | None = 
     centroid = getattr(obj, "centroid", None)
     if not isinstance(centroid, dict):
         centroid = loads_payload(getattr(obj, "centroid_json", None))
+    validation = getattr(obj, "validation", None)
+    if not isinstance(validation, dict):
+        validation = loads_payload(getattr(obj, "validation_json", None))
     return build_vetting_checklist(
         depth_ppm=_f(getattr(obj, "depth_ppm", None)),
         odd_depth_ppm=_f(getattr(obj, "odd_depth_ppm", None)),
@@ -344,4 +404,5 @@ def checklist_from_candidate_like(obj: Any, available_plots: list[str] | None = 
         available_plots=list(plots) if plots else None,
         neighbours=neighbours,
         centroid=centroid,
+        validation=validation,
     )
