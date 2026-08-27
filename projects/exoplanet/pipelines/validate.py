@@ -36,20 +36,17 @@ _TRICERATOPS_N_DRAWS = 20_000
 
 
 def _ensure_triceratops_numpy_shims() -> None:
-    """pytransit 2.2 still does `from numpy import int` (removed in NumPy 1.24+)."""
-    aliases = {
-        "int": int,
-        "float": float,
-        "bool": bool,
-        "complex": complex,
-        "object": object,
-        "str": str,
-    }
+    """pytransit 2.2 still imports numpy.int and scipy.integrate.trapz (removed)."""
+    aliases = {"int": int, "float": float, "bool": bool, "complex": complex}
     for name, value in aliases.items():
-        if not hasattr(np, name):
+        if name not in np.__dict__:
             setattr(np, name, value)
-    if not hasattr(np, "trapz") and hasattr(np, "trapezoid"):
+    if "trapz" not in np.__dict__ and hasattr(np, "trapezoid"):
         np.trapz = np.trapezoid  # type: ignore[attr-defined]
+    import scipy.integrate as _sci_integrate
+
+    if not hasattr(_sci_integrate, "trapz") and hasattr(_sci_integrate, "trapezoid"):
+        _sci_integrate.trapz = _sci_integrate.trapezoid  # type: ignore[attr-defined]
 
 
 @dataclass(frozen=True)
