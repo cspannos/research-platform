@@ -341,7 +341,8 @@ def vet_validate(candidate_id: int, *, force: bool = False) -> dict[str, Any]:
             try:
                 _ensure_triceratops_numpy_shims()
                 import triceratops.triceratops  # noqa: F401
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("triceratops_import_failed", error=str(exc)[:300])
                 return None
             arrays = _load_lc_arrays(target.slug)
             if arrays is None or not payload_inp.tic_id:
