@@ -27,7 +27,7 @@ COPY configs ./configs
 RUN pip install --upgrade pip \
     && pip install . \
     && if [ "$INSTALL_TRICERATOPS" = "true" ]; then \
-         pip install "git+https://github.com/stevengiacalone/triceratops.git@a2f60bd70e9f40c9a00834b858e01362c3dda501"; \
+         pip install "git+https://github.com/stevengiacalone/triceratops.git@a2f60bd70e9f40c9a00834b858e01362c3dda501" "setuptools>=70,<82"; \
        fi
 
 USER app
