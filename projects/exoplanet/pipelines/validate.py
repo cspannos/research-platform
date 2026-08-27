@@ -35,6 +35,23 @@ NFPP_NEARBY_FP = 0.1
 _TRICERATOPS_N_DRAWS = 20_000
 
 
+def _ensure_triceratops_numpy_shims() -> None:
+    """pytransit 2.2 still does `from numpy import int` (removed in NumPy 1.24+)."""
+    aliases = {
+        "int": int,
+        "float": float,
+        "bool": bool,
+        "complex": complex,
+        "object": object,
+        "str": str,
+    }
+    for name, value in aliases.items():
+        if not hasattr(np, name):
+            setattr(np, name, value)
+    if not hasattr(np, "trapz") and hasattr(np, "trapezoid"):
+        np.trapz = np.trapezoid  # type: ignore[attr-defined]
+
+
 @dataclass(frozen=True)
 class ValidationInput:
     mission: str
@@ -145,6 +162,7 @@ def try_triceratops_fpp(
     t0: float | None = None,
 ) -> dict[str, Any]:
     """Call TRICERATOPS if installed. Raises on failure so the job can record a snippet."""
+    _ensure_triceratops_numpy_shims()
     from triceratops.triceratops import target as TrTarget
 
     from projects.exoplanet.pipelines.vetting import _phase_fold
@@ -324,6 +342,7 @@ def vet_validate(candidate_id: int, *, force: bool = False) -> dict[str, Any]:
 
         def _runner(payload_inp: ValidationInput) -> dict[str, Any] | None:
             try:
+                _ensure_triceratops_numpy_shims()
                 import triceratops.triceratops  # noqa: F401
             except Exception:
                 return None
