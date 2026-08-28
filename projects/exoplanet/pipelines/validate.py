@@ -100,6 +100,7 @@ class ValidationInput:
     brightest_delta_mag: float | None
     centroid_pass: bool | None
     centroid_pvalue: float | None
+    depth_ppm: float | None = None
 
 
 def unavailable_validation(reason: str, **extra: object) -> dict[str, Any]:
@@ -195,6 +196,7 @@ def try_triceratops_fpp(
     flux_err: np.ndarray | None,
     sectors: np.ndarray | None = None,
     t0: float | None = None,
+    depth_ppm: float | None = None,
 ) -> dict[str, Any]:
     """Call TRICERATOPS if installed. Raises on failure so the job can record a snippet."""
     _ensure_triceratops_numpy_shims()
@@ -212,6 +214,12 @@ def try_triceratops_fpp(
     if t0 is not None and np.isfinite(t0) and period_days > 0:
         # TRICERATOPS wants days from transit midpoint on a phase-folded curve.
         time_arr = _phase_fold(time_arr, float(period_days), float(t0)) * float(period_days)
+    depth_frac = float(depth_ppm) * 1e-6 if depth_ppm is not None else float("nan")
+    if not np.isfinite(depth_frac) or not 0.0 < depth_frac < 1.0:
+        raise ValueError(f"unusable transit depth for TRICERATOPS: {depth_ppm!r} ppm")
+    # calc_probs reads stars["tdepth"]; despite the docstring, tdepth is a fraction.
+    # all_ap_pixels=None makes TRICERATOPS assume a 5x5 aperture on the target.
+    tgt.calc_depths(tdepth=depth_frac, all_ap_pixels=None)
     tgt.calc_probs(
         time=time_arr,
         flux_0=np.asarray(flux, dtype=float),
@@ -233,6 +241,8 @@ def try_triceratops_fpp(
         "reason": None,
         "error": None,
         "n_draws": _TRICERATOPS_N_DRAWS,
+        "depth_ppm": float(depth_ppm),
+        "aperture": "assumed_5x5",
     }
 
 
@@ -325,6 +335,7 @@ def _input_from_row(candidate: Candidate, target: Target) -> ValidationInput:
         brightest_delta_mag=_as_float((neighbours or {}).get("brightest_delta_mag") if neighbours else None),
         centroid_pass=centroid_pass,
         centroid_pvalue=_as_float((centroid or {}).get("pvalue") if centroid else None),
+        depth_ppm=_as_float(getattr(candidate, "depth_ppm", None)),
     )
 
 
@@ -394,6 +405,7 @@ def vet_validate(candidate_id: int, *, force: bool = False) -> dict[str, Any]:
                 flux_err=flux_err,
                 sectors=_guess_sectors(target.slug),
                 t0=_as_float(getattr(candidate, "t0", None)),
+                depth_ppm=payload_inp.depth_ppm,
             )
 
         try:
