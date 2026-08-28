@@ -4,9 +4,9 @@ targets:
   - id: toi-715
     name: TOI-715
     mission: TESS
-    tic_id: "260128064"
-    ra: 113.85233
-    dec: -73.57742
+    tic_id: "271971130"
+    ra: 113.851069
+    dec: -73.577452
     notes: "Known habitable-zone candidate; baseline monitoring target."
 
   - id: kepler-442
