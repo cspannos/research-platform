@@ -187,6 +187,59 @@ def equivalent_fpp(
     }
 
 
+class MissingStellarProperties(RuntimeError):
+    """The TIC lacks parameters TRICERATOPS needs, so it cannot produce a real FPP."""
+
+
+# TRICERATOPS refuses to validate without these and falls back to a placeholder FPP.
+_TRICERATOPS_REQUIRED_STAR_PROPS = ("mass", "rad", "Teff", "plx")
+
+
+def _missing_star_props(stars: Any) -> list[str]:
+    row = stars.iloc[0]
+    missing: list[str] = []
+    for col in _TRICERATOPS_REQUIRED_STAR_PROPS:
+        if col not in stars.columns:
+            missing.append(col)
+            continue
+        try:
+            value = float(row[col])
+        except (TypeError, ValueError):
+            missing.append(col)
+            continue
+        if not np.isfinite(value) or value <= 0:
+            missing.append(col)
+    return missing
+
+
+def _patch_triceratops_scalar_psf(module: Any) -> None:
+    """Gauss2D meshgrids its inputs, so it hands SciPy's quad a (1, 1) array.
+
+    NumPy 2 no longer coerces size-1 arrays to scalars, which makes calc_depths
+    raise TypeError deep inside quadpack.
+    """
+    original = module.Gauss2D
+    if getattr(original, "_scalar_safe", False):
+        return
+
+    def gauss2d_scalar(x, y, mu_x, mu_y, sigma, A):  # noqa: N803
+        out = np.asarray(original(x, y, mu_x, mu_y, sigma, A))
+        return out.item() if out.size == 1 else out
+
+    gauss2d_scalar._scalar_safe = True  # type: ignore[attr-defined]
+    module.Gauss2D = gauss2d_scalar
+
+
+def _triceratops_workdir() -> Any:
+    """TRICERATOPS writes <TIC>_TRILEGAL.csv into the cwd, which is read-only in the image."""
+    import os
+    from pathlib import Path
+
+    base = Path(os.getenv("EXOPLANET_CACHE_DIR") or "/tmp") / "triceratops"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
 def try_triceratops_fpp(
     *,
     tic_id: str,
@@ -199,14 +252,17 @@ def try_triceratops_fpp(
     depth_ppm: float | None = None,
 ) -> dict[str, Any]:
     """Call TRICERATOPS if installed. Raises on failure so the job can record a snippet."""
+    import os
+
     _ensure_triceratops_numpy_shims()
-    from triceratops.triceratops import target as TrTarget
+    import triceratops.triceratops as tri_mod
 
     from projects.exoplanet.pipelines.vetting import _phase_fold
 
+    _patch_triceratops_scalar_psf(tri_mod)
+
     tid = int(str(tic_id).replace("TIC", "").replace("tic", "").strip())
     sec = np.asarray(sectors if sectors is not None else [1], dtype=int)
-    tgt = TrTarget(ID=tid, sectors=sec)
     err = float(np.nanmedian(flux_err)) if flux_err is not None and len(flux_err) else 1e-4
     if not np.isfinite(err) or err <= 0:
         err = 1e-4
@@ -217,18 +273,38 @@ def try_triceratops_fpp(
     depth_frac = float(depth_ppm) * 1e-6 if depth_ppm is not None else float("nan")
     if not np.isfinite(depth_frac) or not 0.0 < depth_frac < 1.0:
         raise ValueError(f"unusable transit depth for TRICERATOPS: {depth_ppm!r} ppm")
-    # calc_probs reads stars["tdepth"]; despite the docstring, tdepth is a fraction.
-    # all_ap_pixels=None makes TRICERATOPS assume a 5x5 aperture on the target.
-    tgt.calc_depths(tdepth=depth_frac, all_ap_pixels=None)
-    tgt.calc_probs(
-        time=time_arr,
-        flux_0=np.asarray(flux, dtype=float),
-        flux_err_0=err,
-        P_orb=float(period_days),
-        N=_TRICERATOPS_N_DRAWS,
-        parallel=False,
-        verbose=0,
-    )
+
+    workdir = _triceratops_workdir()
+    cached_trilegal = workdir / f"{tid}_TRILEGAL.csv"
+    previous_cwd = os.getcwd()
+    os.chdir(workdir)
+    try:
+        tgt = tri_mod.target(
+            ID=tid,
+            sectors=sec,
+            trilegal_fname=cached_trilegal.name if cached_trilegal.exists() else None,
+        )
+        missing = _missing_star_props(tgt.stars)
+        if missing:
+            raise MissingStellarProperties(
+                f"TIC {tid} has no {', '.join(missing)} in the TIC; "
+                "TRICERATOPS cannot compute a real FPP"
+            )
+        # calc_probs reads stars["tdepth"]; despite the docstring, tdepth is a fraction.
+        # all_ap_pixels=None makes TRICERATOPS assume a 5x5 aperture on the target.
+        tgt.calc_depths(tdepth=depth_frac, all_ap_pixels=None)
+        tgt.calc_probs(
+            time=time_arr,
+            flux_0=np.asarray(flux, dtype=float),
+            flux_err_0=err,
+            P_orb=float(period_days),
+            N=_TRICERATOPS_N_DRAWS,
+            parallel=False,
+            verbose=0,
+        )
+    finally:
+        os.chdir(previous_cwd)
+
     fpp = float(getattr(tgt, "FPP"))
     nfpp = float(getattr(tgt, "NFPP"))
     return {
@@ -289,6 +365,12 @@ def compute_validation_payload(
     runner = triceratops_runner
     try:
         tri = runner(inp) if runner is not None else None
+    except MissingStellarProperties as exc:
+        return unavailable_validation(
+            "missing_stellar_properties",
+            gate=gate,
+            error=str(exc)[:300],
+        )
     except Exception as exc:  # noqa: BLE001
         return unavailable_validation(
             "triceratops_error",

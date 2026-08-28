@@ -263,6 +263,29 @@ Runtime (document for reviewers):
 
 **Never part of `/scan`.** Trigger from `/review` “Run validation” or Telegram `/vet-validate <id>`. Failures store `status=unavailable` plus a short `error` snippet.
 
+Preconditions for a real FPP, and the `unavailable` reason when each is unmet:
+
+| Requirement | Reason recorded if unmet |
+|---|---|
+| Transit depth is a physical fraction (0 < depth < 1) | `triceratops_error` — “unusable transit depth” |
+| TIC has `mass`, `rad`, `Teff`, `plx` | `missing_stellar_properties` |
+| TRILEGAL reachable over HTTPS | `triceratops_error` — SSL snippet |
+
+The TIC is missing `Teff` for a nontrivial number of bright stars, and Gaia DR3 GSP-Phot
+often has no `teff_gspphot` for them either. TRICERATOPS reports a **placeholder `FPP=0.8`**
+in that situation rather than failing, so the job checks the stellar parameters up front and
+records `missing_stellar_properties` instead of storing that number as a score.
+
+Three upstream compatibility notes for this stack (Python 3.12 / NumPy 2):
+
+- `pytransit` imports `numpy.int`, `scipy.integrate.trapz`, and `pkg_resources`; the job installs
+  shims and the image pins `setuptools<82`.
+- TRICERATOPS `Gauss2D` meshgrids scalar inputs, so `calc_depths` hands SciPy's `quad` a `(1, 1)`
+  array that NumPy 2 refuses to coerce; the job patches it to return a scalar.
+- TRICERATOPS writes `<TIC>_TRILEGAL.csv` into the current directory, which is read-only in the
+  image. The job runs in `$EXOPLANET_CACHE_DIR/triceratops` and reuses a cached TRILEGAL table
+  on reruns, which removes a slow external query.
+
 Smoke: pick a high-SNR TESS candidate on `/review`, click Run validation (or `/vet-validate <id>`), expect FPP/NFPP (or unavailable + reason) on the detail panel and in Enrich / `/ask` context. `/scan` must still return without waiting for this job.
 
 ---

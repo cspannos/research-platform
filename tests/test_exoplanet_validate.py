@@ -8,11 +8,14 @@ from fastapi.testclient import TestClient
 from projects.exoplanet.pipelines.checklist import build_vetting_checklist
 from projects.exoplanet.pipelines.expert import _candidate_context, template_review_summary
 from projects.exoplanet.pipelines.validate import (
+    MissingStellarProperties,
     ValidationInput,
     compute_validation_payload,
     equivalent_fpp,
     unavailable_validation,
     _ensure_trilegal_tls,
+    _missing_star_props,
+    _patch_triceratops_scalar_psf,
 )
 from research_platform.api.main import app
 from research_platform.bots.exoplanet_bot import _format_validation
@@ -330,3 +333,56 @@ def test_trilegal_tls_bundle_appends_intermediate(tmp_path, monkeypatch) -> None
     assert "MIIFAKE" in text
     assert os.environ["REQUESTS_CA_BUNDLE"] == path
     assert os.environ["SSL_CERT_FILE"] == path
+
+
+def test_missing_star_props_flags_nan_and_absent_columns() -> None:
+    pd = pytest.importorskip("pandas")
+
+    complete = pd.DataFrame([{"mass": 0.66, "rad": 0.7, "Teff": 4100.0, "plx": 102.8}])
+    assert _missing_star_props(complete) == []
+
+    no_teff = pd.DataFrame([{"mass": 0.66, "rad": 0.7, "Teff": float("nan"), "plx": 102.8}])
+    assert _missing_star_props(no_teff) == ["Teff"]
+
+    empty = pd.DataFrame([{"mass": 0.0, "rad": 0.7}])
+    assert _missing_star_props(empty) == ["mass", "Teff", "plx"]
+
+
+def test_missing_stellar_properties_is_reported_separately() -> None:
+    def runner(_inp):
+        raise MissingStellarProperties("TIC 441420236 has no Teff in the TIC")
+
+    payload = compute_validation_payload(
+        _tess_input(snr=30.0),
+        enabled=True,
+        min_snr=8.0,
+        triceratops_runner=runner,
+    )
+    assert payload["status"] == "unavailable"
+    assert payload["reason"] == "missing_stellar_properties"
+    assert "Teff" in payload["error"]
+    assert payload["fpp"] is None
+
+
+def test_scalar_psf_patch_returns_scalars_and_is_idempotent() -> None:
+    np = pytest.importorskip("numpy")
+
+    def gauss2d(x, y, mu_x, mu_y, sigma, A):  # noqa: N803
+        xgrid, ygrid = np.meshgrid(x, y)
+        return A * np.exp(-((xgrid - mu_x) ** 2 + (ygrid - mu_y) ** 2) / (2 * sigma**2))
+
+    module = SimpleNamespace(Gauss2D=gauss2d)
+    assert np.ndim(module.Gauss2D(0.0, 0.0, 0.0, 0.0, 0.75, 1.0)) == 2
+
+    _patch_triceratops_scalar_psf(module)
+    patched = module.Gauss2D
+    scalar = patched(0.0, 0.0, 0.0, 0.0, 0.75, 1.0)
+    assert isinstance(scalar, float)
+    assert float(scalar) == pytest.approx(1.0)
+
+    # A real grid must still come back as a grid.
+    grid = patched(np.array([0.0, 1.0]), np.array([0.0, 1.0]), 0.0, 0.0, 0.75, 1.0)
+    assert np.shape(grid) == (2, 2)
+
+    _patch_triceratops_scalar_psf(module)
+    assert module.Gauss2D is patched
