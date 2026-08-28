@@ -12,6 +12,7 @@ from projects.exoplanet.pipelines.validate import (
     compute_validation_payload,
     equivalent_fpp,
     unavailable_validation,
+    _ensure_trilegal_tls,
 )
 from research_platform.api.main import app
 from research_platform.bots.exoplanet_bot import _format_validation
@@ -305,3 +306,27 @@ def test_unavailable_validation_keeps_error_snippet() -> None:
     assert payload["status"] == "unavailable"
     assert payload["error"] == "boom 123"
     assert payload["fpp"] is None
+
+
+def test_trilegal_tls_bundle_appends_intermediate(tmp_path, monkeypatch) -> None:
+    import os
+
+    cacert = tmp_path / "cacert.pem"
+    cacert.write_text("ROOTCA\n")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    monkeypatch.setenv("EXOPLANET_CACHE_DIR", str(cache))
+    fake_pem = "-----BEGIN CERTIFICATE-----\nMIIFAKE\n-----END CERTIFICATE-----\n"
+    with (
+        patch("urllib.request.urlopen") as urlopen,
+        patch("ssl.DER_cert_to_PEM_cert", return_value=fake_pem),
+        patch("certifi.where", return_value=str(cacert)),
+    ):
+        urlopen.return_value.__enter__.return_value.read.return_value = b"der-bytes"
+        path = _ensure_trilegal_tls()
+    assert path is not None
+    text = Path(path).read_text()
+    assert "ROOTCA" in text
+    assert "MIIFAKE" in text
+    assert os.environ["REQUESTS_CA_BUNDLE"] == path
+    assert os.environ["SSL_CERT_FILE"] == path

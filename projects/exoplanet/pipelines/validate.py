@@ -34,6 +34,58 @@ NFPP_NEARBY_FP = 0.1
 
 _TRICERATOPS_N_DRAWS = 20_000
 
+# stev.oapd.inaf.it (TRILEGAL, used by TRICERATOPS) omits this ZeroSSL intermediate.
+_TRILEGAL_AIA_CA = "http://crt.sectigo.com/ZeroSSLRSADVSSLCA2.crt"
+
+
+def _ensure_trilegal_tls() -> str | None:
+    """Extend the CA bundle so TRICERATOPS can fetch TRILEGAL over TLS.
+
+    Does not disable verification. Returns the bundle path, or None if skipped.
+    """
+    import os
+    import ssl
+    import urllib.request
+    from pathlib import Path
+
+    try:
+        import certifi
+    except Exception:
+        return None
+
+    cache = Path(os.getenv("EXOPLANET_CACHE_DIR") or "/tmp")
+    dest = cache / "ca-bundle-trilegal.pem"
+    if not dest.exists() or dest.stat().st_size < 1000:
+        try:
+            cache.mkdir(parents=True, exist_ok=True)
+            with urllib.request.urlopen(_TRILEGAL_AIA_CA, timeout=20) as resp:
+                der = resp.read()
+            pem = ssl.DER_cert_to_PEM_cert(der)
+            dest.write_text(Path(certifi.where()).read_text(encoding="utf-8") + pem, encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("trilegal_ca_bundle_failed", error=str(exc)[:200])
+            return None
+    path = str(dest)
+    os.environ["SSL_CERT_FILE"] = path
+    os.environ["REQUESTS_CA_BUNDLE"] = path
+    os.environ["CURL_CA_BUNDLE"] = path
+    return path
+
+
+def _ensure_triceratops_numpy_shims() -> None:
+    """pytransit 2.2 still imports numpy.int and scipy.integrate.trapz (removed)."""
+    aliases = {"int": int, "float": float, "bool": bool, "complex": complex}
+    for name, value in aliases.items():
+        if name not in np.__dict__:
+            setattr(np, name, value)
+    if "trapz" not in np.__dict__ and hasattr(np, "trapezoid"):
+        np.trapz = np.trapezoid  # type: ignore[attr-defined]
+    import scipy.integrate as _sci_integrate
+
+    if not hasattr(_sci_integrate, "trapz") and hasattr(_sci_integrate, "trapezoid"):
+        _sci_integrate.trapz = _sci_integrate.trapezoid  # type: ignore[attr-defined]
+    _ensure_trilegal_tls()
+
 
 def _ensure_triceratops_numpy_shims() -> None:
     """pytransit 2.2 still imports numpy.int and scipy.integrate.trapz (removed)."""
