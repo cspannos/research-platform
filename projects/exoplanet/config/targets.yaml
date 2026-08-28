@@ -9,6 +9,12 @@ targets:
     dec: -73.577452
     notes: "Known habitable-zone candidate; baseline monitoring target."
 
+  - id: toi-270
+    name: TOI-270
+    mission: TESS
+    tic_id: "259377017"
+    notes: "Bright M dwarf multi-planet system; short periods give many transits per sector."
+
   - id: kepler-442
     name: Kepler-442
     mission: Kepler
