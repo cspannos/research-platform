@@ -87,20 +87,6 @@ def _ensure_triceratops_numpy_shims() -> None:
     _ensure_trilegal_tls()
 
 
-def _ensure_triceratops_numpy_shims() -> None:
-    """pytransit 2.2 still imports numpy.int and scipy.integrate.trapz (removed)."""
-    aliases = {"int": int, "float": float, "bool": bool, "complex": complex}
-    for name, value in aliases.items():
-        if name not in np.__dict__:
-            setattr(np, name, value)
-    if "trapz" not in np.__dict__ and hasattr(np, "trapezoid"):
-        np.trapz = np.trapezoid  # type: ignore[attr-defined]
-    import scipy.integrate as _sci_integrate
-
-    if not hasattr(_sci_integrate, "trapz") and hasattr(_sci_integrate, "trapezoid"):
-        _sci_integrate.trapz = _sci_integrate.trapezoid  # type: ignore[attr-defined]
-
-
 @dataclass(frozen=True)
 class ValidationInput:
     mission: str
