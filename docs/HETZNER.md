@@ -280,8 +280,11 @@ Three upstream compatibility notes for this stack (Python 3.12 / NumPy 2):
 
 - `pytransit` imports `numpy.int`, `scipy.integrate.trapz`, and `pkg_resources`; the job installs
   shims and the image pins `setuptools<82`.
-- TRICERATOPS `Gauss2D` meshgrids scalar inputs, so `calc_depths` hands SciPy's `quad` a `(1, 1)`
-  array that NumPy 2 refuses to coerce; the job patches it to return a scalar.
+- TRICERATOPS is pinned to **v1.0.21** (`ff888e6`). Earlier commits cannot run on NumPy 2:
+  `calc_depths` integrated the PSF with `dblquad` over a meshgridded `Gauss2D` that returns a
+  `(1, 1)` array, and `marginal_likelihoods` assigned size-1 arrays into scalar slots. v1.0.21
+  integrates the PSF analytically with `ndtr` (also much faster) and uses `.item()`. The job
+  still carries a defensive `Gauss2D` shim, which is a no-op on v1.0.21.
 - TRICERATOPS writes `<TIC>_TRILEGAL.csv` into the current directory, which is read-only in the
   image. The job runs in `$EXOPLANET_CACHE_DIR/triceratops` and reuses a cached TRILEGAL table
   on reruns, which removes a slow external query.

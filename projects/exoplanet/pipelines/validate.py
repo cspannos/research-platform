@@ -216,10 +216,11 @@ def _patch_triceratops_scalar_psf(module: Any) -> None:
     """Gauss2D meshgrids its inputs, so it hands SciPy's quad a (1, 1) array.
 
     NumPy 2 no longer coerces size-1 arrays to scalars, which makes calc_depths
-    raise TypeError deep inside quadpack.
+    raise TypeError deep inside quadpack. TRICERATOPS >= 1.0.21 integrates the PSF
+    analytically and no longer exposes Gauss2D, so this is a no-op there.
     """
-    original = module.Gauss2D
-    if getattr(original, "_scalar_safe", False):
+    original = getattr(module, "Gauss2D", None)
+    if original is None or getattr(original, "_scalar_safe", False):
         return
 
     def gauss2d_scalar(x, y, mu_x, mu_y, sigma, A):  # noqa: N803

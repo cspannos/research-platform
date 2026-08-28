@@ -386,3 +386,9 @@ def test_scalar_psf_patch_returns_scalars_and_is_idempotent() -> None:
 
     _patch_triceratops_scalar_psf(module)
     assert module.Gauss2D is patched
+
+
+def test_scalar_psf_patch_skips_versions_without_gauss2d() -> None:
+    module = SimpleNamespace()
+    _patch_triceratops_scalar_psf(module)
+    assert not hasattr(module, "Gauss2D")

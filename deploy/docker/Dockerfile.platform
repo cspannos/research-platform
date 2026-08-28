@@ -8,6 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Worker-only: TRICERATOPS + numba/pytransit need a compiler at build time.
+# Pinned to v1.0.21, which computes the PSF integral analytically (ndtr) and fixes
+# the NumPy 2 size-1 assignments in marginal_likelihoods. Older commits cannot run
+# on NumPy 2 at all.
 ARG INSTALL_TRICERATOPS=false
 
 RUN apt-get update \
@@ -27,7 +30,7 @@ COPY configs ./configs
 RUN pip install --upgrade pip \
     && pip install . \
     && if [ "$INSTALL_TRICERATOPS" = "true" ]; then \
-         pip install "git+https://github.com/stevengiacalone/triceratops.git@a2f60bd70e9f40c9a00834b858e01362c3dda501" "setuptools>=70,<82"; \
+         pip install "git+https://github.com/stevengiacalone/triceratops.git@ff888e6dcf88f47f9c0f53845c7320aeaf99e0e7" "setuptools>=70,<82"; \
        fi
 
 USER app
