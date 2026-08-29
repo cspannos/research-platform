@@ -199,6 +199,9 @@ def query_gaia_cone(ra: float, dec: float, radius_arcmin: float = CONE_RADIUS_AR
 
 
 def _opt_float(value: object) -> float | None:
+    # Gaia leaves pm masked for some sources; float() on a masked element warns.
+    if value is None or value is np.ma.masked or np.ma.is_masked(value):
+        return None
     try:
         out = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
