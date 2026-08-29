@@ -289,7 +289,7 @@ def _fpp_item(validation: dict[str, Any] | None) -> ChecklistItem:
             label="Statistical validation (FPP)",
             status="unavailable",
             detail=f"FPP unavailable ({reason}).",
-            next_action="Run validation from /review or /vet-validate <id> (EXOPLANET_TRICERATOPS=true).",
+            next_action="Run validation from /review or /vet_validate <id> (EXOPLANET_TRICERATOPS=true).",
         )
     fpp = payload.get("fpp")
     nfpp = payload.get("nfpp")

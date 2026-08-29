@@ -65,7 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /summaries — generate human-review summaries\n"
         "  /notify — send Telegram digest of pending candidates\n"
         "  /ask [candidate_id] <question> — exoplanet expert (same LLM as review Enrich)\n"
-        "  /vet-validate <id> — queue optional FPP/NFPP (never part of /scan)\n"
+        "  /vet_validate <id> — queue optional FPP/NFPP (never part of /scan)\n"
         "  /review — WireGuard URL + admin token for the review dashboard\n"
         "Or just send a free-text question."
     )
@@ -358,7 +358,7 @@ async def vet_validate_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     args = list(context.args or [])
     raw = args[0].lstrip("#") if args else ""
     if not raw.isdigit():
-        await update.message.reply_text("Usage: /vet-validate <candidate_id>")
+        await update.message.reply_text("Usage: /vet_validate <candidate_id>")
         return
     candidate_id = int(raw)
     from projects.exoplanet.pipelines.validate import VALIDATE_QUEUE_NAME, enqueue_validation
@@ -444,10 +444,13 @@ async def free_text_ask(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "notify",
         "ask",
         "review",
-        "vet-validate",
+        "vet_validate",
     }
+    # What people naturally type -> the command Telegram will actually accept.
+    aliases = {"vet-validate": "vet_validate", "vetvalidate": "vet_validate"}
     if cleaned.startswith("/"):
         cmd = cleaned[1:].split()[0].split("@", 1)[0].lower()
+        cmd = aliases.get(cmd, cmd)
         if cmd in known:
             await update.message.reply_text(
                 f"That looks like a command, but Telegram didn't receive a slash-command.\n"
@@ -481,7 +484,9 @@ def main() -> None:
     app.add_handler(CommandHandler("summaries", summaries))
     app.add_handler(CommandHandler("notify", notify))
     app.add_handler(CommandHandler("ask", ask))
-    app.add_handler(CommandHandler("vet-validate", vet_validate_cmd))
+    # Telegram command names allow only letters, digits and underscores; a hyphen here
+    # makes CommandHandler raise at startup and takes the whole bot down.
+    app.add_handler(CommandHandler("vet_validate", vet_validate_cmd))
     app.add_handler(CommandHandler("review", review_link))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, free_text_ask))
     app.add_handler(MessageHandler(filters.ALL, echo_unauthorized))

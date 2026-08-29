@@ -1,9 +1,50 @@
+import ast
+import inspect
+
+import pytest
+
+from research_platform.bots import exoplanet_bot
 from research_platform.bots.exoplanet_bot import (
     _format_analyze,
     _format_ingest,
     _format_job_result,
     _format_scan,
 )
+
+
+def _registered_command_names() -> list[str]:
+    tree = ast.parse(inspect.getsource(exoplanet_bot))
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        target = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        if target != "CommandHandler" or not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            names.append(first.value)
+    return names
+
+
+def test_every_registered_command_name_is_accepted_by_telegram() -> None:
+    """A hyphen in a command name makes CommandHandler raise and the bot never starts."""
+    from telegram.ext import CommandHandler
+
+    names = _registered_command_names()
+    assert names, "no CommandHandler registrations found"
+
+    async def _noop(update, context) -> None:  # pragma: no cover - never called
+        return None
+
+    for name in names:
+        try:
+            CommandHandler(name, _noop)
+        except Exception as exc:  # noqa: BLE001
+            pytest.fail(f"command {name!r} is not a valid Telegram command: {exc}")
+
+    assert "vet_validate" in names
 
 
 def test_format_analyze_interesting() -> None:

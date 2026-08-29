@@ -261,7 +261,7 @@ Runtime (document for reviewers):
 | Equivalent FPP (package not installed) | < 1 s | Uses odd/even + Gaia dilution + centroid already stored |
 | Real `triceratops` (`pip install triceratops`, N=20_000, `parallel=False`) | typically **5–30 min** on 1 CPU | High-SNR TESS with TIC id; timeout `EXOPLANET_VALIDATE_TIMEOUT_S` (default 900 s) |
 
-**Never part of `/scan`.** Trigger from `/review` “Run validation” or Telegram `/vet-validate <id>`. Failures store `status=unavailable` plus a short `error` snippet.
+**Never part of `/scan`.** Trigger from `/review` “Run validation” or Telegram `/vet_validate <id>`. Failures store `status=unavailable` plus a short `error` snippet.
 
 Preconditions for a real FPP, and the `unavailable` reason when each is unmet:
 
@@ -289,7 +289,7 @@ Three upstream compatibility notes for this stack (Python 3.12 / NumPy 2):
   image. The job runs in `$EXOPLANET_CACHE_DIR/triceratops` and reuses a cached TRILEGAL table
   on reruns, which removes a slow external query.
 
-Smoke: pick a high-SNR TESS candidate on `/review`, click Run validation (or `/vet-validate <id>`), expect FPP/NFPP (or unavailable + reason) on the detail panel and in Enrich / `/ask` context. `/scan` must still return without waiting for this job.
+Smoke: pick a high-SNR TESS candidate on `/review`, click Run validation (or `/vet_validate <id>`), expect FPP/NFPP (or unavailable + reason) on the detail panel and in Enrich / `/ask` context. `/scan` must still return without waiting for this job.
 
 ---
 
