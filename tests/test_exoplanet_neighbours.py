@@ -100,6 +100,31 @@ def test_gaia_network_failure_is_unavailable() -> None:
     assert "no_network" in str(payload["reason"])
 
 
+def test_gaia_cone_passes_radius_as_keyword() -> None:
+    """astroquery >= 0.4.11 makes radius keyword-only; a positional call raises TypeError."""
+    from projects.exoplanet.pipelines.neighbours import query_gaia_cone
+
+    fake_gaia = MagicMock()
+    table = MagicMock()
+    table.colnames = ["source_id", "ra", "dec", "phot_g_mean_mag"]
+    table.__len__ = lambda self: 0
+    table.__iter__ = lambda self: iter(())
+    fake_gaia.cone_search_async.return_value.get_results.return_value = table
+
+    def cone_search_async(coordinate, *, radius=None, **kwargs):
+        return fake_gaia.cone_search_async(coordinate, radius=radius, **kwargs)
+
+    module = MagicMock()
+    module.Gaia = MagicMock()
+    module.Gaia.cone_search_async = cone_search_async
+
+    with patch.dict("sys.modules", {"astroquery.gaia": module}):
+        query_gaia_cone(113.85, -73.58, radius_arcmin=1.0)
+
+    _, kwargs = fake_gaia.cone_search_async.call_args
+    assert kwargs["radius"] is not None
+
+
 def test_centroid_shift_detects_offset() -> None:
     rng = np.random.default_rng(0)
     n = 800

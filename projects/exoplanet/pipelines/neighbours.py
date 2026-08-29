@@ -151,7 +151,8 @@ def query_gaia_cone(ra: float, dec: float, radius_arcmin: float = CONE_RADIUS_AR
     except Exception:  # noqa: BLE001
         pass
     coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
-    job = Gaia.cone_search_async(coord, radius_arcmin * u.arcmin)
+    # astroquery >= 0.4.11 makes radius keyword-only.
+    job = Gaia.cone_search_async(coord, radius=radius_arcmin * u.arcmin)
     table = job.get_results()
     rows: list[dict[str, Any]] = []
     if table is None:
