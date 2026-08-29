@@ -21,6 +21,10 @@ from research_platform.core.logging import get_logger
 
 logger = get_logger(__name__)
 
+# The scheduler re-analyzes every target daily. The recovered period wobbles slightly
+# between runs, so an exact match would still insert a new row each day.
+CANDIDATE_PERIOD_RTOL = 0.02
+
 
 @dataclass(frozen=True)
 class AnalysisResult:
@@ -153,6 +157,31 @@ def _apply_phase_b(candidate: Candidate, target: Target) -> dict[str, object]:
         }
 
 
+def find_matching_candidate(
+    session, target_id: int, period_days: float, *, rtol: float = CANDIDATE_PERIOD_RTOL
+) -> Candidate | None:
+    """Most recent candidate for this target whose period matches within rtol.
+
+    Deliberately includes rejected rows: re-detecting a signal a reviewer already
+    rejected must not put it back in the queue.
+    """
+    if not np.isfinite(period_days) or period_days <= 0:
+        return None
+    rows = (
+        session.query(Candidate)
+        .filter(Candidate.target_id == target_id)
+        .order_by(Candidate.id.desc())
+        .all()
+    )
+    for row in rows:
+        existing = row.period_days
+        if existing is None or not np.isfinite(existing) or existing <= 0:
+            continue
+        if abs(existing - period_days) <= rtol * max(existing, period_days):
+            return row
+    return None
+
+
 def analyze_target_slug(slug: str) -> dict[str, object]:
     init_db()
     time, flux = _load_cached_curve(slug)
@@ -165,18 +194,28 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             raise ValueError(f"Unknown target slug: {slug}")
 
         candidate_id = None
+        reused = False
         vetting: dict[str, object] = {}
         if result.is_interesting:
-            candidate = Candidate(
-                target_id=target.id,
-                period_days=result.period_days,
-                depth_ppm=result.depth_ppm,
-                snr=result.snr,
-                flag_reason=result.flag_reason,
-                status="pending",
-                created_at=datetime.now(timezone.utc),
-            )
-            session.add(candidate)
+            candidate = find_matching_candidate(session, target.id, result.period_days)
+            if candidate is None:
+                candidate = Candidate(
+                    target_id=target.id,
+                    period_days=result.period_days,
+                    depth_ppm=result.depth_ppm,
+                    snr=result.snr,
+                    flag_reason=result.flag_reason,
+                    status="pending",
+                    created_at=datetime.now(timezone.utc),
+                )
+                session.add(candidate)
+            else:
+                # Refresh the measurements but keep status, so review decisions stick.
+                reused = True
+                candidate.period_days = result.period_days
+                candidate.depth_ppm = result.depth_ppm
+                candidate.snr = result.snr
+                candidate.flag_reason = result.flag_reason
             session.flush()
             candidate_id = candidate.id
             vetting = _apply_geometry_and_plots(candidate, slug, time, flux)
@@ -191,12 +230,14 @@ def analyze_target_slug(slug: str) -> dict[str, object]:
             snr=result.snr,
             depth_ppm=result.depth_ppm,
             candidate_id=candidate_id,
+            candidate_reused=reused,
             plots_ready=vetting.get("plots_ready"),
         )
         payload: dict[str, object] = {
             "target": slug,
             "interesting": result.is_interesting,
             "candidate_id": candidate_id,
+            "candidate_reused": reused,
             "period_days": result.period_days,
             "depth_ppm": vetting.get("depth_ppm", result.depth_ppm),
             "snr": result.snr,
