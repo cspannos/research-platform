@@ -125,6 +125,64 @@ def test_gaia_cone_passes_radius_as_keyword() -> None:
     assert kwargs["radius"] is not None
 
 
+def test_high_proper_motion_target_is_not_its_own_neighbour() -> None:
+    """TOI-270 sits 4.5" from its TIC position in Gaia DR3 (pmdec = -270 mas/yr).
+
+    Matching on the raw Gaia position leaves target_gmag unset, so dilution and
+    brightest_delta_mag both come back None even though the cone search worked.
+    """
+    tic_ra, tic_dec = 68.4155009405299, -51.9562322933249
+    rows = [
+        # The target itself, at its Gaia DR3 (J2016) position.
+        {
+            "source_id": "4781196115469953024",
+            "ra": 68.41609923470311,
+            "dec": -51.957431176233946,
+            "gmag": 11.62,
+            "pmra": 82.9441,
+            "pmdec": -269.755,
+        },
+        # A genuine faint neighbour inside the TESS aperture.
+        {
+            "source_id": "4781184364438788736",
+            "ra": 68.42360468687501,
+            "dec": -51.95845474511671,
+            "gmag": 20.36,
+            "pmra": 1.0,
+            "pmdec": -2.0,
+        },
+    ]
+
+    payload = summarise_neighbours(
+        rows,
+        ra=tic_ra,
+        dec=tic_dec,
+        aperture_arcsec=21.0,
+        coord_source="tic",
+    )
+
+    assert payload["status"] == "ok"
+    assert payload["target_gmag"] == pytest.approx(11.62)
+    assert payload["n_neighbours"] == 1
+    assert payload["dilution"] is not None
+    # The target dominates: a G=20.36 companion contributes almost no flux.
+    assert payload["dilution"] > 0.99
+    assert payload["brightest_delta_mag"] == pytest.approx(20.36 - 11.62, abs=1e-6)
+    assert payload["neighbours"][0]["source_id"] == "4781184364438788736"
+
+
+def test_target_match_still_works_without_proper_motions() -> None:
+    rows = [
+        {"source_id": "t", "ra": 10.0, "dec": 20.0, "gmag": 12.0},
+        {"source_id": "n", "ra": 10.004, "dec": 20.0, "gmag": 15.0},
+    ]
+    payload = summarise_neighbours(
+        rows, ra=10.0, dec=20.0, aperture_arcsec=21.0, coord_source="tic"
+    )
+    assert payload["target_gmag"] == pytest.approx(12.0)
+    assert payload["n_neighbours"] == 1
+
+
 def test_centroid_shift_detects_offset() -> None:
     rng = np.random.default_rng(0)
     n = 800

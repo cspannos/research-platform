@@ -24,6 +24,12 @@ MAX_NEIGHBOURS_STORED = 20
 GAIA_ROW_LIMIT = 80
 GAIA_TIMEOUT_S = 30.0
 
+# TIC/yaml coordinates are J2000; Gaia DR3 positions are at J2016.0. A nearby M dwarf can
+# move several arcsec between the two, which is more than TARGET_MATCH_ARCSEC, so the target
+# has to be de-precessed before it can be told apart from its neighbours.
+GAIA_EPOCH_YEAR = 2016.0
+CATALOG_EPOCH_YEAR = 2000.0
+
 # Dilution / bright-neighbour gates for the checklist (used here as flags).
 DILUTION_FAIL = 0.80
 DILUTION_UNCLEAR = 0.95
@@ -162,6 +168,8 @@ def query_gaia_cone(ra: float, dec: float, radius_arcmin: float = CONE_RADIUS_AR
     ra_k = colnames.get("ra")
     dec_k = colnames.get("dec")
     mag_k = colnames.get("phot_g_mean_mag")
+    pmra_k = colnames.get("pmra")
+    pmdec_k = colnames.get("pmdec")
     for row in table:
         try:
             source_id = str(row[sid_k]) if sid_k else ""
@@ -183,13 +191,57 @@ def query_gaia_cone(ra: float, dec: float, radius_arcmin: float = CONE_RADIUS_AR
                 "ra": ra_i,
                 "dec": dec_i,
                 "gmag": gmag,
+                "pmra": _opt_float(row[pmra_k]) if pmra_k is not None else None,
+                "pmdec": _opt_float(row[pmdec_k]) if pmdec_k is not None else None,
             }
         )
     return rows
 
 
+def _opt_float(value: object) -> float | None:
+    try:
+        out = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return out if np.isfinite(out) else None
+
+
+def _at_catalog_epoch(ra: float, dec: float, pmra: float | None, pmdec: float | None) -> tuple[float, float]:
+    """Rewind a Gaia position to the catalog epoch using its proper motion.
+
+    pmra is mu_alpha* (already includes cos(dec)); both are mas/yr.
+    """
+    if pmra is None and pmdec is None:
+        return ra, dec
+    dt = CATALOG_EPOCH_YEAR - GAIA_EPOCH_YEAR
+    cos_dec = np.cos(np.radians(dec))
+    d_dec = ((pmdec or 0.0) / 3.6e6) * dt
+    d_ra = 0.0 if abs(cos_dec) < 1e-9 else ((pmra or 0.0) / 3.6e6) * dt / cos_dec
+    return ra + d_ra, dec + d_dec
+
+
 def _mag_to_flux(mag: float) -> float:
     return float(10 ** (-0.4 * mag))
+
+
+def _match_target_row(rows: list[dict[str, Any]], origin: SkyCoord) -> dict[str, Any] | None:
+    """Find the target's own Gaia row, comparing at the catalog epoch.
+
+    Returns the raw row (Gaia-epoch coordinates), or None if nothing matches.
+    """
+    best: dict[str, Any] | None = None
+    best_sep = float("inf")
+    for row in rows:
+        pair = _finite_pair(row.get("ra"), row.get("dec"))
+        if pair is None:
+            continue
+        ra_j2000, dec_j2000 = _at_catalog_epoch(pair[0], pair[1], row.get("pmra"), row.get("pmdec"))
+        sep = float(
+            origin.separation(SkyCoord(ra=ra_j2000 * u.deg, dec=dec_j2000 * u.deg)).arcsec
+        )
+        if sep <= TARGET_MATCH_ARCSEC and sep < best_sep:
+            best, best_sep = row, sep
+    return best
 
 
 def summarise_neighbours(
@@ -203,6 +255,12 @@ def summarise_neighbours(
 ) -> dict[str, Any]:
     """Build a neighbour summary dict from Gaia-like rows (ra/dec/gmag)."""
     origin = SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+    target_row = _match_target_row(rows, origin)
+    if target_row is not None:
+        # Measure neighbours from the target's Gaia position: TESS observes much closer to
+        # the Gaia epoch than to J2000, so this is where the star actually was.
+        origin = SkyCoord(ra=target_row["ra"] * u.deg, dec=target_row["dec"] * u.deg)
+
     enriched: list[dict[str, Any]] = []
     for row in rows:
         pair = _finite_pair(row.get("ra"), row.get("dec"))
@@ -227,9 +285,14 @@ def summarise_neighbours(
         )
     enriched.sort(key=lambda r: r["sep_arcsec"])
 
-    target_row = next((r for r in enriched if r["sep_arcsec"] <= TARGET_MATCH_ARCSEC), None)
-    target_gmag = target_row["gmag"] if target_row else None
-    neighbours = [r for r in enriched if r["sep_arcsec"] > TARGET_MATCH_ARCSEC]
+    target_sid = str(target_row["source_id"]) if target_row is not None else None
+    if target_sid:
+        target_entry = next((r for r in enriched if r["source_id"] == target_sid), None)
+        neighbours = [r for r in enriched if r["source_id"] != target_sid]
+    else:
+        target_entry = next((r for r in enriched if r["sep_arcsec"] <= TARGET_MATCH_ARCSEC), None)
+        neighbours = [r for r in enriched if r["sep_arcsec"] > TARGET_MATCH_ARCSEC]
+    target_gmag = target_entry["gmag"] if target_entry else None
 
     for item in neighbours:
         if target_gmag is not None and item["gmag"] is not None:
